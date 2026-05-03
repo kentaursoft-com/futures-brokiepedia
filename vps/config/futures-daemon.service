@@ -1,0 +1,18 @@
+[Unit]
+Description=Futures Brokiepedia Trading Daemon
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/root/futures-brokiepedia/vps
+ExecStart=/usr/bin/docker-compose up
+ExecStop=/usr/bin/docker-compose down
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=futures-daemon
+
+[Install]
+WantedBy=multi-user.target

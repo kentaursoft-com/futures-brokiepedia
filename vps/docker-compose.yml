@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  questdb:
+    image: questdb/questdb:latest
+    container_name: futures-questdb
+    restart: unless-stopped
+    ports:
+      - "9000:9000"    # REST API
+      - "8812:8812"    # PostgreSQL wire
+      - "9009:9009"    # InfluxDB line protocol
+    volumes:
+      - questdb-data:/var/lib/questdb
+    environment:
+      - QDB_PG_USER=admin
+      - QDB_PG_PASSWORD=brokiepedia_quest_2026
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: futures-chromadb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - ALLOW_RESET=true
+      - ANONYMIZED_TELEMETRY=false
+
+  daemon:
+    build:
+      context: ./daemon
+      dockerfile: Dockerfile
+    container_name: futures-daemon
+    restart: unless-stopped
+    depends_on:
+      - questdb
+      - chromadb
+    volumes:
+      - ./daemon:/app
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - QUESTDB_HOST=questdb
+      - QUESTDB_PORT=8812
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - TURSO_DB_URL=libsql://futures-kenan-ai.aws-eu-west-1.turso.io
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY}
+      - LANGCHAIN_TRACING_V2=true
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+    networks:
+      - futures-network
+
+volumes:
+  questdb-data:
+  chroma-data:
+
+networks:
+  futures-network:
+    driver: bridge
