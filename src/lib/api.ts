@@ -1,7 +1,8 @@
-import { dashboardState } from './stores';
+import { writable } from 'svelte/store';
 import type { DashboardState } from './types';
 
-const API_BASE = 'https://futures-brokiepedia-api.your-subdomain.workers.dev'; // Update after Worker deploy
+// Use the Cloudflare Worker as API gateway
+const API_BASE = 'https://futures-brokiepedia-api.kentaursoft-com.workers.dev';
 
 class ApiClient {
 	private token: string | null = null;
@@ -30,7 +31,6 @@ class ApiClient {
 		});
 		
 		if (res.status === 401) {
-			// Token expired, redirect to auth
 			if (typeof window !== 'undefined') {
 				localStorage.removeItem('auth_token');
 				window.location.href = '/auth';
@@ -45,11 +45,17 @@ class ApiClient {
 		return this.fetch('/api/v1/state') as Promise<DashboardState>;
 	}
 	
+	async getDepartments(): Promise<{ departments: any[]; last_update: number }> {
+		return this.fetch('/api/v1/departments') as Promise<{ departments: any[]; last_update: number }>;
+	}
+	
+	async getPositions(): Promise<{ positions: any[]; count: number }> {
+		return this.fetch('/api/v1/positions') as Promise<{ positions: any[]; count: number }>;
+	}
+	
 	async triggerKillSwitch(): Promise<{ success: boolean }> {
-		// Step 1: Get challenge that requires passkey
 		const challengeRes = await this.fetch('/api/v1/killswitch/challenge') as { challenge: number[]; challengeId: string };
 		
-		// Step 2: Prompt user for passkey authentication
 		const assertion = await navigator.credentials.get({
 			publicKey: {
 				challenge: new Uint8Array(challengeRes.challenge),
@@ -62,7 +68,6 @@ class ApiClient {
 			throw new Error('Kill-switch cancelled');
 		}
 		
-		// Step 3: Send kill-switch request with verification
 		return this.fetch('/api/v1/killswitch', {
 			method: 'POST',
 			body: JSON.stringify({ passkey_verified: true })
@@ -87,16 +92,22 @@ class ApiClient {
 
 export const api = new ApiClient();
 
+// Live dashboard state store
+export const liveState = writable<DashboardState | null>(null);
+
 // Poll live state every 5 seconds
 export function startPolling(intervalMs = 5000): () => void {
 	const interval = setInterval(async () => {
 		try {
 			const state = await api.getState();
-			dashboardState.set(state);
+			liveState.set(state);
 		} catch (err) {
 			console.error('Poll error:', err);
 		}
 	}, intervalMs);
+
+	// Initial fetch
+	api.getState().then(state => liveState.set(state)).catch(console.error);
 
 	return () => clearInterval(interval);
 }

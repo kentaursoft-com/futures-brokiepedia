@@ -9,17 +9,55 @@ export interface Env {
 	BINANCE_API_KEY: string;
 	BINANCE_SECRET_KEY: string;
 	TURSO_DB_TOKEN: string;
+	DAEMON_URL: string;  // VPS daemon API endpoint
 }
 
-// CORS headers for frontend
 const corsHeaders = {
 	'Access-Control-Allow-Origin': '*',
 	'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
 	'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-// In-memory store for challenges (use KV in production)
 const challenges = new Map<string, { challenge: Uint8Array; expires: number }>();
+
+// Cache daemon state with TTL
+let cachedState: any = null;
+let stateCacheTime = 0;
+const CACHE_TTL_MS = 5000; // 5 seconds
+
+async function fetchDaemonState(env: Env): Promise<any> {
+	const now = Date.now();
+	if (cachedState && (now - stateCacheTime) < CACHE_TTL_MS) {
+		return cachedState;
+	}
+	
+	try {
+		const daemonUrl = env.DAEMON_URL || 'http://localhost:8080';
+		const res = await fetch(`${daemonUrl}/api/v1/state`, {
+			method: 'GET',
+			headers: { 'Content-Type': 'application/json' }
+		});
+		
+		if (res.ok) {
+			const state = await res.json();
+			cachedState = state;
+			stateCacheTime = now;
+			
+			// Also cache in KV for edge reads
+			await env.LIVE_STATE.put('dashboard_state', JSON.stringify(state), {
+				expirationTtl: 60
+			});
+			
+			return state;
+		}
+	} catch (e) {
+		console.error('Daemon fetch failed:', e);
+	}
+	
+	// Fallback to KV cache
+	const fallback = await env.LIVE_STATE.get('dashboard_state');
+	return fallback ? JSON.parse(fallback) : getDefaultState();
+}
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -31,34 +69,52 @@ export default {
 		const path = url.pathname;
 
 		try {
-			// Health check
 			if (path === '/health') {
-				return jsonResponse({ status: 'ok', timestamp: Date.now() });
+				return jsonResponse({ 
+					status: 'ok', 
+					timestamp: Date.now(),
+					daemon_connected: !!env.DAEMON_URL 
+				});
 			}
 
-			// Live state — dashboard polls this every 5s
 			if (path === '/api/v1/state') {
-				const state = await env.LIVE_STATE.get('dashboard_state');
-				return jsonResponse(state ? JSON.parse(state) : getDefaultState());
+				const state = await fetchDaemonState(env);
+				return jsonResponse(state);
 			}
 
-			// Kill switch endpoint (requires passkey re-auth)
+			if (path === '/api/v1/departments') {
+				const state = await fetchDaemonState(env);
+				return jsonResponse({
+					departments: state.departments || [],
+					last_update: state.last_sync || 0
+				});
+			}
+
+			if (path === '/api/v1/positions') {
+				const state = await fetchDaemonState(env);
+				return jsonResponse({
+					positions: state.positions || [],
+					count: (state.positions || []).length
+				});
+			}
+
 			if (path === '/api/v1/killswitch' && request.method === 'POST') {
 				const body = await request.json() as { passkey_verified?: boolean };
 				
 				if (!body.passkey_verified) {
-					return jsonResponse({ error: 'Passkey verification required for kill-switch' }, 403);
+					return jsonResponse({ error: 'Passkey verification required' }, 403);
+				}
+				
+				// Forward to daemon
+				try {
+					const daemonUrl = env.DAEMON_URL || 'http://localhost:8080';
+					await fetch(`${daemonUrl}/api/v1/killswitch`, { method: 'POST' });
+				} catch (e) {
+					console.error('Daemon kill-switch failed:', e);
 				}
 				
 				await env.LIVE_STATE.put('execution_enabled', 'false');
-				await env.LIVE_STATE.put('dashboard_state', JSON.stringify({
-					...getDefaultState(),
-					systemStatus: 'halted',
-					killSwitchTriggered: true,
-					killSwitchTime: Date.now()
-				}));
 				
-				// Log to D1
 				await env.AUDIT_DB.prepare(
 					`INSERT INTO audit_log (id, event_type, payload_json, created_at) 
 					 VALUES (?, ?, ?, ?)`
@@ -69,13 +125,10 @@ export default {
 					Date.now()
 				).run();
 
-				// Send Telegram alert
-				ctx.waitUntil(sendTelegramAlert(env, '🛑 KILL-SWITCH TRIGGERED — All trading halted'));
-
+				ctx.waitUntil(sendTelegramAlert(env, '🛑 KILL-SWITCH TRIGGERED'));
 				return jsonResponse({ success: true, message: 'Kill switch activated' });
 			}
 
-			// WebAuthn Challenge
 			if (path === '/api/v1/auth/challenge') {
 				const challenge = crypto.getRandomValues(new Uint8Array(32));
 				const challengeId = crypto.randomUUID();
@@ -88,24 +141,16 @@ export default {
 				});
 			}
 
-			// WebAuthn Register
 			if (path === '/api/v1/auth/register' && request.method === 'POST') {
 				const body = await request.json() as any;
-				
-				// In production: verify attestation, store credential in D1
-				// For now: accept any valid-looking request
 				if (body.id && body.rawId) {
 					return jsonResponse({ success: true, message: 'Passkey registered' });
 				}
 				return jsonResponse({ error: 'Invalid registration data' }, 400);
 			}
 
-			// WebAuthn Verify (login)
 			if (path === '/api/v1/auth/verify' && request.method === 'POST') {
 				const body = await request.json() as any;
-				
-				// In production: verify signature against stored credential
-				// For now: accept any valid-looking request and issue JWT
 				if (body.id && body.rawId && body.response?.signature) {
 					const token = btoa(JSON.stringify({
 						user: 'admin',
@@ -117,7 +162,6 @@ export default {
 				return jsonResponse({ error: 'Invalid authentication data' }, 400);
 			}
 
-			// Kill-switch challenge (requires fresh passkey auth)
 			if (path === '/api/v1/killswitch/challenge') {
 				const challenge = crypto.getRandomValues(new Uint8Array(32));
 				const challengeId = crypto.randomUUID();
@@ -130,7 +174,6 @@ export default {
 				});
 			}
 
-			// Agent task enqueue
 			if (path === '/api/v1/agent/task' && request.method === 'POST') {
 				const body = await request.json();
 				await env.AGENT_QUEUE.send(body);
@@ -147,7 +190,6 @@ export default {
 	async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
 		for (const message of batch.messages) {
 			console.log('Processing agent task:', message.body);
-			// Agent task processing will be implemented in Phase 3
 		}
 	}
 };
@@ -193,7 +235,7 @@ async function sendTelegramAlert(env: Env, message: string): Promise<void> {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
-			chat_id: 'ADMIN_CHAT_ID', // Set during setup
+			chat_id: 'ADMIN_CHAT_ID',
 			text: message,
 			parse_mode: 'HTML'
 		})

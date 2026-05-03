@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import TradingChart from '$lib/components/TradingChart.svelte';
 	import IndicatorsPanel from '$lib/components/IndicatorsPanel.svelte';
@@ -13,7 +13,7 @@
 	import OrderForm from '$lib/components/OrderForm.svelte';
 	import SocialFeed from '$lib/components/SocialFeed.svelte';
 	import { binanceWS } from '$lib/websocket';
-	import { api } from '$lib/api';
+	import { api, liveState, startPolling } from '$lib/api';
 	
 	let wsConnected = false;
 	let lastPrice = 0;
@@ -29,17 +29,38 @@
 		}
 	});
 	
-	let systemStatus = 'paper';
-	let activeAsset = 'BTC-PERP';
-	let regime = 'trending_up';
-	let lastSync = new Date().toISOString();
+	// Live state from daemon (via Worker)
+	let daemonConnected = false;
+	let stopPolling: (() => void) | null = null;
 	
-	let todayPnl = 124.50;
-	let unrealizedPnl = -45.20;
-	let equity = 10500.00;
-	let dailyDrawdown = 1.2;
+	// Subscribe to live state
+	liveState.subscribe(state => {
+		if (state) {
+			daemonConnected = true;
+		}
+	});
 	
-	const departments = [
+	// Default values (used when daemon is offline)
+	let defaultStatus = 'paper';
+	let defaultAsset = 'BTC-PERP';
+	let defaultRegime = 'trending_up';
+	let defaultPnl = 124.50;
+	let defaultUnrealized = -45.20;
+	let defaultEquity = 10500.00;
+	let defaultDrawdown = 1.2;
+	
+	// Computed values - use live data if available
+	$: systemStatus = $liveState?.systemStatus || defaultStatus;
+	$: activeAsset = $liveState?.activeAsset || defaultAsset;
+	$: regime = $liveState?.regime || defaultRegime;
+	$: todayPnl = $liveState?.todayPnl ?? defaultPnl;
+	$: unrealizedPnl = $liveState?.unrealizedPnl ?? defaultUnrealized;
+	$: equity = $liveState?.equity ?? defaultEquity;
+	$: dailyDrawdown = $liveState?.dailyDrawdown ?? defaultDrawdown;
+	$: lastSync = $liveState?.lastSync ? new Date($liveState.lastSync).toISOString() : new Date().toISOString();
+	
+	// Departments from daemon or fallback
+	const defaultDepartments = [
 		{ name: 'Fundamental', confidence: 0.72, direction: 'long', lastRun: '14:30:00' },
 		{ name: 'Technical', confidence: 0.85, direction: 'long', lastRun: '14:30:00' },
 		{ name: 'Sentiment', confidence: 0.61, direction: 'flat', lastRun: '14:30:00' },
@@ -47,18 +68,26 @@
 		{ name: 'Statistical', confidence: 0.55, direction: 'short', lastRun: '14:30:00' },
 		{ name: 'Qualitative', confidence: 0.90, direction: 'long', lastRun: '14:30:00' }
 	];
+	$: departments = ($liveState?.departments?.length > 0) ? $liveState.departments : defaultDepartments;
 	
-	const positions = [
+	// Positions from daemon or fallback
+	const defaultPositions = [
 		{ symbol: 'BTC-PERP', side: 'long', size: 0.15, entry: 43250.00, mark: 43400.00, pnl: 22.50, exchange: 'Binance', strategy: 'EMA-Trend-v1' }
 	];
+	$: positions = ($liveState?.positions?.length > 0) ? $liveState.positions : defaultPositions;
 	
+	// Health from daemon
 	$: health = {
-		vps: true,
+		vps: $liveState?.health?.vps ?? true,
 		binance: wsConnected,
-		deepseek: true,
-		turso: true,
-		exchanges: 8
+		deepseek: $liveState?.health?.deepseek ?? false,
+		turso: $liveState?.health?.turso ?? false,
+		exchanges: $liveState?.health?.exchanges ?? 0
 	};
+	
+	onMount(() => {
+		stopPolling = startPolling(5000);
+	});
 	
 	let killSwitchLoading = false;
 	
@@ -110,6 +139,7 @@
 	onDestroy(() => {
 		unsubscribe();
 		binanceWS.disconnect();
+		if (stopPolling) stopPolling();
 	});
 </script>
 
@@ -142,6 +172,10 @@
 		</div>
 		
 		<div class="flex items-center gap-2 lg:gap-4">
+			<div class="hidden sm:flex items-center gap-2">
+				<span class="h-2 w-2 rounded-full {daemonConnected ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
+				<span class="text-xs text-muted-foreground hidden lg:inline">{daemonConnected ? 'Daemon Online' : 'Daemon Offline'}</span>
+			</div>
 			<div class="hidden sm:flex items-center gap-2">
 				<span class="h-2 w-2 rounded-full {wsConnected ? 'bg-emerald-500' : 'bg-red-500'}"></span>
 				<span class="text-xs text-muted-foreground hidden lg:inline">{wsConnected ? 'Live Feed' : 'Reconnecting...'}</span>
