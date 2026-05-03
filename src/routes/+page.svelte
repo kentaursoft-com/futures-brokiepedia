@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import TradingChart from '$lib/components/TradingChart.svelte';
+	import IndicatorsPanel from '$lib/components/IndicatorsPanel.svelte';
+	import OrderBook from '$lib/components/OrderBook.svelte';
+	import EquityChart from '$lib/components/EquityChart.svelte';
+	import TradeHistory from '$lib/components/TradeHistory.svelte';
+	import TimeframeSelector from '$lib/components/TimeframeSelector.svelte';
 	import { binanceWS } from '$lib/websocket';
-	import { dashboardState } from '$lib/stores';
 	
-	// Subscribe to real-time data
-	let wsState: ReturnType<typeof binanceWS.subscribe>;
 	let wsConnected = false;
 	let lastPrice = 0;
 	let priceChange = 0;
@@ -18,7 +20,6 @@
 		}
 	});
 	
-	// Dashboard state
 	let systemStatus = 'paper';
 	let activeAsset = 'BTC-PERP';
 	let regime = 'trending_up';
@@ -29,7 +30,6 @@
 	let equity = 10500.00;
 	let dailyDrawdown = 1.2;
 	
-	// Agent departments (stubbed - will be live in Phase 3)
 	const departments = [
 		{ name: 'Fundamental', confidence: 0.72, direction: 'long', lastRun: '14:30:00' },
 		{ name: 'Technical', confidence: 0.85, direction: 'long', lastRun: '14:30:00' },
@@ -39,12 +39,10 @@
 		{ name: 'Qualitative', confidence: 0.90, direction: 'long', lastRun: '14:30:00' }
 	];
 	
-	// Open positions (stubbed - will be live in Phase 3)
 	const positions = [
 		{ symbol: 'BTC-PERP', side: 'long', size: 0.15, entry: 43250.00, mark: 43400.00, pnl: 22.50, exchange: 'Binance', strategy: 'EMA-Trend-v1' }
 	];
 	
-	// Health status with live WebSocket
 	$: health = {
 		vps: true,
 		binance: wsConnected,
@@ -69,6 +67,11 @@
 	
 	function getDirectionColor(dir: string) {
 		return dir === 'long' ? 'text-emerald-400' : dir === 'short' ? 'text-red-400' : 'text-slate-400';
+	}
+	
+	function onTimeframeChange(tf: string) {
+		console.log('Timeframe changed to:', tf);
+		// Will be implemented with multi-timeframe support
 	}
 	
 	onDestroy(() => {
@@ -158,47 +161,69 @@
 		</div>
 	</div>
 	
-	<!-- Main Content Grid -->
+	<!-- Chart + Order Book Row -->
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 		<!-- Chart Panel -->
 		<div class="lg:col-span-2 rounded-lg border bg-card p-4">
 			<div class="flex items-center justify-between mb-4">
 				<h2 class="text-sm font-semibold">Chart — {activeAsset}</h2>
-				<div class="flex gap-2">
-					{#each ['1m', '5m', '15m', '1h'] as tf}
-						<button class="rounded px-2 py-0.5 text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
-							{tf}
-						</button>
-					{/each}
-				</div>
+				<TimeframeSelector on:change={(e) => onTimeframeChange(e.detail)} />
 			</div>
 			<div class="h-[400px] rounded-md">
 				<TradingChart />
 			</div>
+			<!-- Technical Indicators -->
+			<div class="mt-4">
+				<IndicatorsPanel height={100} />
+			</div>
 		</div>
 		
-		<!-- Agent Departments Panel -->
-		<div class="rounded-lg border bg-card p-4">
-			<h2 class="text-sm font-semibold mb-4">Agent Departments</h2>
-			<div class="space-y-3">
-				{#each departments as dept}
-					<div class="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
-						<div>
-							<p class="text-sm font-medium">{dept.name}</p>
-							<p class="text-xs text-muted-foreground">{dept.lastRun}</p>
-						</div>
-						<div class="text-right">
-							<p class="text-sm font-bold {getDirectionColor(dept.direction)}">{dept.direction.toUpperCase()}</p>
-							<div class="mt-1 h-1 w-16 rounded-full bg-secondary">
-								<div 
-									class="h-full rounded-full bg-primary transition-all"
-									style="width: {dept.confidence * 100}%"
-								></div>
+		<!-- Side Panel: Order Book + Agent Departments -->
+		<div class="space-y-6">
+			<OrderBook />
+			
+			<div class="rounded-lg border bg-card p-4">
+				<h2 class="text-sm font-semibold mb-4">Agent Departments</h2>
+				<div class="space-y-3">
+					{#each departments as dept}
+						<div class="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
+							<div>
+								<p class="text-sm font-medium">{dept.name}</p>
+								<p class="text-xs text-muted-foreground">{dept.lastRun}</p>
+							</div>
+							<div class="text-right">
+								<p class="text-sm font-bold {getDirectionColor(dept.direction)}">{dept.direction.toUpperCase()}</p>
+								<div class="mt-1 h-1 w-16 rounded-full bg-secondary">
+									<div 
+										class="h-full rounded-full bg-primary transition-all"
+										style="width: {dept.confidence * 100}%"
+									></div>
+								</div>
 							</div>
 						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			</div>
+		</div>
+	</div>
+	
+	<!-- Equity Curve -->
+	<div class="rounded-lg border bg-card p-4">
+		<div class="flex items-center justify-between mb-4">
+			<h2 class="text-sm font-semibold">Equity Curve & Drawdown</h2>
+			<div class="flex items-center gap-4 text-xs">
+				<div class="flex items-center gap-1">
+					<span class="h-2 w-2 rounded-full bg-blue-500"></span>
+					<span class="text-muted-foreground">Equity</span>
+				</div>
+				<div class="flex items-center gap-1">
+					<span class="h-2 w-2 rounded-full bg-red-500"></span>
+					<span class="text-muted-foreground">Drawdown %</span>
+				</div>
+			</div>
+		</div>
+		<div class="h-[200px]">
+			<EquityChart />
 		</div>
 	</div>
 	
@@ -289,6 +314,9 @@
 			</div>
 		</div>
 	</div>
+	
+	<!-- Trade History -->
+	<TradeHistory />
 </main>
 
 <!-- System Health Bar -->
