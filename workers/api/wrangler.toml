@@ -1,0 +1,31 @@
+name = "futures-brokiepedia-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-15"
+
+# Durable Objects (for WebSocket sessions if needed later)
+# [[durable_objects.bindings]]
+# name = "SESSIONS"
+# class_name = "Session"
+
+# KV Namespaces
+[[kv_namespaces]]
+binding = "LIVE_STATE"
+id = "futures_live_state_kv"
+
+# D1 Database
+[[d1_databases]]
+binding = "AUDIT_DB"
+database_name = "futures_audit"
+database_id = "your-d1-database-id"
+
+# Queues
+[[queues.producers]]
+binding = "AGENT_QUEUE"
+queue = "futures-agent-tasks"
+
+# Secrets (set via wrangler secret put)
+# DEEPSEEK_API_KEY
+# TELEGRAM_BOT_TOKEN
+# BINANCE_API_KEY
+# BINANCE_SECRET_KEY
+# TURSO_DB_TOKEN
