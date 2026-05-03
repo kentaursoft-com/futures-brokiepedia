@@ -1,18 +1,35 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import TradingChart from '$lib/components/TradingChart.svelte';
+	import { binanceWS } from '$lib/websocket';
+	import { dashboardState } from '$lib/stores';
 	
-	// Dashboard state (stubbed with placeholder values for Phase 1)
+	// Subscribe to real-time data
+	let wsState: ReturnType<typeof binanceWS.subscribe>;
+	let wsConnected = false;
+	let lastPrice = 0;
+	let priceChange = 0;
+	
+	const unsubscribe = binanceWS.subscribe(state => {
+		wsConnected = state.connected;
+		if (state.lastPrice !== lastPrice) {
+			priceChange = state.lastPrice - lastPrice;
+			lastPrice = state.lastPrice;
+		}
+	});
+	
+	// Dashboard state
 	let systemStatus = 'paper';
 	let activeAsset = 'BTC-PERP';
 	let regime = 'trending_up';
-	let lastSync = '2024-01-15 14:32:05 UTC';
+	let lastSync = new Date().toISOString();
 	
 	let todayPnl = 124.50;
 	let unrealizedPnl = -45.20;
 	let equity = 10500.00;
 	let dailyDrawdown = 1.2;
 	
-	// Agent departments (stubbed)
+	// Agent departments (stubbed - will be live in Phase 3)
 	const departments = [
 		{ name: 'Fundamental', confidence: 0.72, direction: 'long', lastRun: '14:30:00' },
 		{ name: 'Technical', confidence: 0.85, direction: 'long', lastRun: '14:30:00' },
@@ -22,15 +39,15 @@
 		{ name: 'Qualitative', confidence: 0.90, direction: 'long', lastRun: '14:30:00' }
 	];
 	
-	// Open positions (stubbed)
+	// Open positions (stubbed - will be live in Phase 3)
 	const positions = [
 		{ symbol: 'BTC-PERP', side: 'long', size: 0.15, entry: 43250.00, mark: 43400.00, pnl: 22.50, exchange: 'Binance', strategy: 'EMA-Trend-v1' }
 	];
 	
-	// Health status
-	const health = {
+	// Health status with live WebSocket
+	$: health = {
 		vps: true,
-		binance: true,
+		binance: wsConnected,
 		deepseek: true,
 		turso: true,
 		exchanges: 8
@@ -53,6 +70,11 @@
 	function getDirectionColor(dir: string) {
 		return dir === 'long' ? 'text-emerald-400' : dir === 'short' ? 'text-red-400' : 'text-slate-400';
 	}
+	
+	onDestroy(() => {
+		unsubscribe();
+		binanceWS.disconnect();
+	});
 </script>
 
 <!-- Top Bar -->
@@ -64,11 +86,25 @@
 				<span class="h-1.5 w-1.5 rounded-full bg-white"></span>
 				{getStatusText(systemStatus)}
 			</span>
-			<span class="text-sm text-muted-foreground">{activeAsset}</span>
+			<div class="flex items-center gap-2">
+				<span class="text-sm font-medium">{activeAsset}</span>
+				{#if lastPrice > 0}
+					<span class="text-sm {priceChange >= 0 ? 'text-emerald-400' : 'text-red-400'}">
+						${lastPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+						{#if priceChange !== 0}
+							<span class="text-xs">({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)})</span>
+						{/if}
+					</span>
+				{/if}
+			</div>
 			<span class="rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">{regime}</span>
 		</div>
 		
 		<div class="flex items-center gap-4">
+			<div class="flex items-center gap-2">
+				<span class="h-2 w-2 rounded-full {wsConnected ? 'bg-emerald-500' : 'bg-red-500'}"></span>
+				<span class="text-xs text-muted-foreground">{wsConnected ? 'Live Feed' : 'Reconnecting...'}</span>
+			</div>
 			<span class="text-xs text-muted-foreground">Last sync: {lastSync}</span>
 			<button 
 				on:click={triggerKillSwitch}
@@ -130,14 +166,14 @@
 				<h2 class="text-sm font-semibold">Chart — {activeAsset}</h2>
 				<div class="flex gap-2">
 					{#each ['1m', '5m', '15m', '1h'] as tf}
-						<button class="rounded px-2 py-0.5 text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80">
+						<button class="rounded px-2 py-0.5 text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
 							{tf}
 						</button>
 					{/each}
 				</div>
 			</div>
-			<div class="h-[400px] flex items-center justify-center rounded-md bg-secondary/50">
-				<p class="text-muted-foreground text-sm">TradingView Lightweight Charts — Coming in Phase 2</p>
+			<div class="h-[400px] rounded-md">
+				<TradingChart />
 			</div>
 		</div>
 		
@@ -155,7 +191,7 @@
 							<p class="text-sm font-bold {getDirectionColor(dept.direction)}">{dept.direction.toUpperCase()}</p>
 							<div class="mt-1 h-1 w-16 rounded-full bg-secondary">
 								<div 
-									class="h-full rounded-full bg-primary"
+									class="h-full rounded-full bg-primary transition-all"
 									style="width: {dept.confidence * 100}%"
 								></div>
 							</div>
