@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
 	import TradingChart from '$lib/components/TradingChart.svelte';
 	import IndicatorsPanel from '$lib/components/IndicatorsPanel.svelte';
 	import OrderBook from '$lib/components/OrderBook.svelte';
@@ -7,6 +8,7 @@
 	import TradeHistory from '$lib/components/TradeHistory.svelte';
 	import TimeframeSelector from '$lib/components/TimeframeSelector.svelte';
 	import { binanceWS } from '$lib/websocket';
+	import { api } from '$lib/api';
 	
 	let wsConnected = false;
 	let lastPrice = 0;
@@ -51,10 +53,27 @@
 		exchanges: 8
 	};
 	
-	function triggerKillSwitch() {
-		if (confirm('⚠️ CONFIRM KILL-SWITCH: This will close ALL positions and halt trading. Continue?')) {
-			alert('Kill-switch triggered (demo)');
+	let killSwitchLoading = false;
+	
+	async function triggerKillSwitch() {
+		if (!confirm('⚠️ STEP 1/2: You are about to trigger the KILL-SWITCH.\n\nThis will:\n• Cancel all open orders\n• Close all positions at market\n• HALT all trading permanently\n\nContinue?')) {
+			return;
 		}
+		
+		try {
+			killSwitchLoading = true;
+			await api.triggerKillSwitch();
+			alert('✅ Kill-switch activated successfully. All trading halted.');
+		} catch (err) {
+			alert('❌ Kill-switch failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+		} finally {
+			killSwitchLoading = false;
+		}
+	}
+	
+	function logout() {
+		api.logout();
+		goto('/auth');
 	}
 	
 	function getStatusColor(status: string) {
@@ -110,10 +129,17 @@
 			</div>
 			<span class="text-xs text-muted-foreground">Last sync: {lastSync}</span>
 			<button 
-				on:click={triggerKillSwitch}
-				class="rounded-md bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors"
+				on:click={logout}
+				class="rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
 			>
-				🛑 Kill Switch
+				Logout
+			</button>
+			<button 
+				on:click={triggerKillSwitch}
+				disabled={killSwitchLoading}
+				class="rounded-md bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+			>
+				{killSwitchLoading ? 'Verifying...' : '🛑 Kill Switch'}
 			</button>
 		</div>
 	</div>
