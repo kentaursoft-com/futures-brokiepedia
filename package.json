@@ -33,6 +33,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@tailwindcss/forms": "^0.5.11",
     "bits-ui": "^0.21.0",
     "clsx": "^2.1.0",
     "lightweight-charts": "^4.1.0",
