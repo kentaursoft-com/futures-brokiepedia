@@ -7,122 +7,289 @@ export const GET: RequestHandler = async () => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Futures Brokiepedia - Evaluation Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { DEFAULT: '#0F172A', light: '#1E293B', lighter: '#334155' },
+            emerald: { DEFAULT: '#10B981', glow: 'rgba(16, 185, 129, 0.4)' },
+            rose: { DEFAULT: '#F43F5E', glow: 'rgba(244, 63, 94, 0.4)' },
+            amber: { DEFAULT: '#F59E0B', glow: 'rgba(245, 158, 11, 0.4)' },
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+          },
+          animation: {
+            'glow-emerald': 'glow-emerald 2s ease-in-out infinite alternate',
+            'glow-rose': 'glow-rose 2s ease-in-out infinite alternate',
+            'glow-amber': 'glow-amber 2s ease-in-out infinite alternate',
+            'pulse-glow': 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            'glow-emerald': {
+              '0%': { boxShadow: '0 0 2px #10B981' },
+              '100%': { boxShadow: '0 0 8px #10B981, 0 0 16px rgba(16, 185, 129, 0.3)' },
+            },
+            'glow-rose': {
+              '0%': { boxShadow: '0 0 2px #F43F5E' },
+              '100%': { boxShadow: '0 0 8px #F43F5E, 0 0 16px rgba(244, 63, 94, 0.3)' },
+            },
+            'glow-amber': {
+              '0%': { boxShadow: '0 0 2px #F59E0B' },
+              '100%': { boxShadow: '0 0 8px #F59E0B, 0 0 16px rgba(245, 158, 11, 0.3)' },
+            },
+            'pulse-glow': {
+              '0%, 100%': { boxShadow: '0 0 5px rgba(244, 63, 94, 0.4), 0 0 10px rgba(244, 63, 94, 0.2)' },
+              '50%': { boxShadow: '0 0 20px rgba(244, 63, 94, 0.6), 0 0 40px rgba(244, 63, 94, 0.3)' },
+            },
+          },
+        },
+      },
+    };
+  </script>
   <style>
-    :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --accent: #3b82f6; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem 1rem; }
-    .container { max-width: 900px; margin: 0 auto; }
-    header { text-align: center; margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid #334155; }
-    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-    .subtitle { color: var(--muted); }
-    .score-circle { width: 120px; height: 120px; border-radius: 50%; background: conic-gradient(var(--success) calc(var(--score) * 1%), #334155 0); display: flex; align-items: center; justify-content: center; margin: 1.5rem auto; position: relative; }
-    .score-circle::before { content: ''; width: 100px; height: 100px; border-radius: 50%; background: var(--card); position: absolute; }
-    .score-text { position: relative; z-index: 1; font-size: 2rem; font-weight: bold; }
-    .timestamp { color: var(--muted); font-size: 0.875rem; }
-    .input-area { background: var(--card); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 1px solid #334155; }
-    .input-area h3 { margin-bottom: 1rem; color: var(--accent); }
-    textarea { width: 100%; min-height: 120px; background: var(--bg); border: 1px solid #475569; border-radius: 8px; color: var(--text); padding: 1rem; font-family: 'Monaco', 'Consolas', monospace; font-size: 0.875rem; resize: vertical; }
-    .btn { background: var(--accent); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-size: 1rem; margin-top: 1rem; transition: opacity 0.2s; }
-    .btn:hover { opacity: 0.9; }
-    .btn-secondary { background: #475569; margin-left: 0.5rem; }
-    .grid { display: grid; gap: 1rem; margin-bottom: 2rem; }
-    .grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-    .card { background: var(--card); border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
-    .card h3 { color: var(--accent); margin-bottom: 1rem; font-size: 1.1rem; }
-    .metric { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #334155; }
-    .metric:last-child { border-bottom: none; }
-    .metric-label { color: var(--muted); }
-    .metric-value { font-weight: 600; }
-    .badge { display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
-    .badge-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-    .badge-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
-    .badge-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-    .progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 0.5rem; }
-    .progress-fill { height: 100%; background: var(--success); border-radius: 4px; transition: width 0.5s ease; }
-    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
-    .status-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: rgba(255,255,255,0.05); border-radius: 6px; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .status-dot.green { background: var(--success); }
-    .status-dot.yellow { background: var(--warning); }
-    .status-dot.red { background: var(--danger); }
-    .hidden { display: none; }
-    .error { color: var(--danger); padding: 1rem; background: rgba(239,68,68,0.1); border-radius: 8px; }
-    pre { background: var(--bg); padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.875rem; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0F172A; color: #e2e8f0; }
+    .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      transition: all 0.3s ease;
+    }
+    .glass-card:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .score-ring {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .score-ring::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: #0F172A;
+    }
+    .score-text {
+      position: relative;
+      z-index: 1;
+      font-size: 2.5rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .progress-track {
+      height: 6px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.7s ease;
+      position: relative;
+    }
+    .progress-fill::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      animation: shimmer 2s infinite;
+    }
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .status-dot.online {
+      background: #10B981;
+      box-shadow: 0 0 6px #10B981, 0 0 12px rgba(16,185,129,0.4);
+      animation: glow-emerald 2s ease-in-out infinite alternate;
+    }
+    .status-dot.warning {
+      background: #F59E0B;
+      box-shadow: 0 0 6px #F59E0B, 0 0 12px rgba(245,158,11,0.4);
+      animation: glow-amber 2s ease-in-out infinite alternate;
+    }
+    .status-dot.error {
+      background: #F43F5E;
+      box-shadow: 0 0 6px #F43F5E, 0 0 12px rgba(244,63,94,0.4);
+      animation: glow-rose 2s ease-in-out infinite alternate;
+    }
+    .status-dot.offline {
+      background: #64748B;
+    }
+    .risk-card-pulse {
+      animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      border-color: rgba(244, 63, 94, 0.6) !important;
+    }
+    .metric-value {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body>
-  <div class="container">
-    <header>
-      <h1>📊 Futures Brokiepedia</h1>
-      <p class="subtitle">Automated Trading Dashboard - Evaluation Report</p>
-      <div class="score-circle" id="scoreCircle" style="--score: 0;">
-        <span class="score-text" id="overallScore">-</span>
+<body class="min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <header class="text-center mb-10">
+      <h1 class="text-3xl sm:text-4xl font-bold text-white/90 mb-2">📊 Futures Brokiepedia</h1>
+      <p class="text-white/40 text-sm sm:text-base">Automated Trading Dashboard - Evaluation Report</p>
+      
+      <!-- Score Circle -->
+      <div class="mt-8 flex justify-center">
+        <div class="score-ring" id="scoreRing" style="background: conic-gradient(#10B981 calc(0 * 1%), rgba(255,255,255,0.1) 0);">
+          <span class="score-text text-emerald-400" id="overallScore">-</span>
+        </div>
       </div>
-      <p class="timestamp" id="timestamp">Paste eval JSON to generate report</p>
+      <p class="text-white/40 text-sm mt-4 font-mono" id="timestamp">Paste eval JSON to generate report</p>
     </header>
 
-    <div class="input-area">
-      <h3>📋 Evaluation Data Input</h3>
-      <p style="color: var(--muted); margin-bottom: 1rem; font-size: 0.9rem;">
-        The evaluator can't access Cloudflare Workers directly. Paste the JSON response here to generate the report.
+    <!-- Input Area -->
+    <div class="glass-card p-5 sm:p-6 mb-8">
+      <h3 class="text-blue-400 font-semibold mb-3 flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        Evaluation Data Input
+      </h3>
+      <p class="text-white/40 text-sm mb-4">
+        Cloudflare Workers are restricted for some AI evaluators. Paste the JSON response below to generate a visual report.
       </p>
-      <textarea id="jsonInput" placeholder="Paste the eval JSON here..."></textarea>
-      <div style="margin-top: 1rem;">
-        <button class="btn" onclick="generateReport()">Generate Report</button>
-        <button class="btn btn-secondary" onclick="fetchFromWorker()">Try Fetch from Worker</button>
-        <button class="btn btn-secondary" onclick="loadSample()">Load Sample Data</button>
+      <textarea id="jsonInput" class="w-full min-h-[120px] bg-navy/50 border border-white/10 rounded-xl p-4 text-sm font-mono text-white/80 resize-y" placeholder="Paste the eval JSON here..."></textarea>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button class="bg-blue-500 hover:bg-blue-400 text-white px-5 py-2.5 rounded-xl font-medium transition-colors flex items-center gap-2" onclick="generateReport()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          Generate Report
+        </button>
+        <button class="bg-white/5 hover:bg-white/10 text-white/70 px-5 py-2.5 rounded-xl font-medium transition-colors border border-white/10" onclick="fetchFromWorker()">
+          Try Fetch from Worker
+        </button>
+        <button class="bg-white/5 hover:bg-white/10 text-white/70 px-5 py-2.5 rounded-xl font-medium transition-colors border border-white/10" onclick="loadSample()">
+          Load Sample Data
+        </button>
       </div>
-      <div id="fetchError" class="error hidden" style="margin-top: 1rem;"></div>
+      <div id="fetchError" class="hidden mt-4 p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm"></div>
     </div>
 
-    <div id="report" class="hidden">
-      <div class="card" style="margin-bottom: 1rem;">
-        <h3>📈 Progress Breakdown</h3>
-        <div id="progressMetrics"></div>
+    <!-- Report Content -->
+    <div id="report" class="hidden space-y-6">
+      <!-- Overall Progress -->
+      <div class="glass-card p-5 sm:p-6">
+        <h3 class="text-blue-400 font-semibold mb-5 flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+          Progress Breakdown
+        </h3>
+        <div id="progressMetrics" class="space-y-4"></div>
       </div>
 
-      <div class="grid grid-2">
-        <div class="card">
-          <h3>🔐 Authentication</h3>
-          <div id="authMetrics"></div>
+      <!-- Two Column Layout -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Risk Management - Prominent Card -->
+        <div id="riskCard" class="glass-card p-5 sm:p-6 lg:col-span-2">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="text-rose-400 font-semibold flex items-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+              Risk Management
+            </h3>
+            <div id="riskStatusBadge"></div>
+          </div>
+          <div id="riskMetrics" class="grid grid-cols-2 sm:grid-cols-3 gap-4"></div>
         </div>
-        <div class="card">
-          <h3>☁️ Cloudflare Infrastructure</h3>
-          <div id="infraMetrics"></div>
+
+        <!-- Auth -->
+        <div class="glass-card p-5 sm:p-6">
+          <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            Authentication
+          </h3>
+          <div id="authMetrics" class="space-y-3"></div>
         </div>
-        <div class="card">
-          <h3>🎨 Frontend Components</h3>
+
+        <!-- Cloudflare Infra -->
+        <div class="glass-card p-5 sm:p-6">
+          <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
+            Cloudflare Infrastructure
+          </h3>
+          <div id="infraMetrics" class="space-y-3"></div>
+        </div>
+
+        <!-- Frontend -->
+        <div class="glass-card p-5 sm:p-6">
+          <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path></svg>
+            Frontend Components
+          </h3>
           <div id="frontendMetrics"></div>
         </div>
-        <div class="card">
-          <h3>⚠️ Risk Management</h3>
-          <div id="riskMetrics"></div>
+
+        <!-- VPS -->
+        <div class="glass-card p-5 sm:p-6">
+          <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+            VPS Daemon Status
+          </h3>
+          <div id="vpsMetrics" class="space-y-3"></div>
         </div>
       </div>
 
-      <div class="card" style="margin-bottom: 1rem;">
-        <h3>💾 KV Data Status</h3>
-        <div id="kvMetrics" class="status-grid"></div>
+      <!-- KV Data -->
+      <div class="glass-card p-5 sm:p-6">
+        <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+          KV Data Status
+        </h3>
+        <div id="kvMetrics" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"></div>
       </div>
 
-      <div class="card" style="margin-bottom: 1rem;">
-        <h3>🖥️ VPS Daemon Status</h3>
-        <div id="vpsMetrics"></div>
+      <!-- Routes -->
+      <div class="glass-card p-5 sm:p-6">
+        <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
+          Application Routes
+        </h3>
+        <div id="routesList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
       </div>
 
-      <div class="card" style="margin-bottom: 1rem;">
-        <h3>🛣️ Application Routes</h3>
-        <div id="routesList" class="status-grid"></div>
+      <!-- Repo -->
+      <div class="glass-card p-5 sm:p-6">
+        <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+          Repository Files
+        </h3>
+        <div id="repoMetrics" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
       </div>
 
-      <div class="card" style="margin-bottom: 1rem;">
-        <h3>📁 Repository Files</h3>
-        <div id="repoMetrics" class="status-grid"></div>
-      </div>
-
-      <div class="card">
-        <h3>🔧 Raw JSON Data</h3>
-        <pre id="rawJson"></pre>
+      <!-- Raw JSON -->
+      <div class="glass-card p-5 sm:p-6">
+        <h3 class="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+          Raw JSON Data
+        </h3>
+        <pre id="rawJson" class="bg-navy/50 border border-white/10 rounded-xl p-4 text-xs font-mono text-white/60 overflow-x-auto"></pre>
       </div>
     </div>
   </div>
@@ -150,6 +317,24 @@ export const GET: RequestHandler = async () => {
       }
     }
 
+    function getStatusDot(status) {
+      const colors = {
+        online: 'online', warning: 'warning', error: 'error', offline: 'offline'
+      };
+      return '<span class="status-dot ' + (colors[status] || 'offline') + '"></span>';
+    }
+
+    function getBadge(text, type) {
+      const colors = {
+        success: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+        warning: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
+        danger: 'bg-rose-500/15 text-rose-400 border-rose-500/20',
+        info: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
+        neutral: 'bg-white/5 text-white/50 border-white/10'
+      };
+      return '<span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border ' + (colors[type] || colors.neutral) + '">' + text + '</span>';
+    }
+
     function generateReport() {
       let data;
       try {
@@ -159,43 +344,89 @@ export const GET: RequestHandler = async () => {
       } catch (err) { alert('Invalid JSON: ' + err.message); return; }
 
       document.getElementById('report').classList.remove('hidden');
+      
       const score = data.progress?.overall || 0;
+      const scoreColor = score >= 80 ? '#10B981' : score >= 50 ? '#F59E0B' : '#F43F5E';
       document.getElementById('overallScore').textContent = score;
-      document.getElementById('scoreCircle').style.setProperty('--score', score);
-      document.getElementById('timestamp').textContent = 'Generated: ' + new Date().toLocaleString() + ' | Deployed: ' + (data.project?.deployed_at || 'Unknown');
+      document.getElementById('overallScore').style.color = scoreColor;
+      document.getElementById('scoreRing').style.background = 'conic-gradient(' + scoreColor + ' ' + (score * 3.6) + 'deg, rgba(255,255,255,0.1) 0)';
+      document.getElementById('timestamp').textContent = 'Generated: ' + new Date().toLocaleString() + ' | Environment: ' + (data.project?.environment || 'Unknown');
 
+      // Progress
       const progressDiv = document.getElementById('progressMetrics');
       const progress = data.progress || {};
       progressDiv.innerHTML = Object.entries(progress).filter(([k]) => k !== 'overall').map(([key, val]) => {
-        const color = val >= 80 ? 'var(--success)' : val >= 50 ? 'var(--warning)' : 'var(--danger)';
-        return '<div class="metric"><span class="metric-label">' + key.replace(/_/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase()) + '</span><div style="flex: 1; margin: 0 1rem;"><div class="progress-bar"><div class="progress-fill" style="width: ' + val + '%; background: ' + color + '"></div></div></div><span class="metric-value" style="color: ' + color + '">' + val + '%</span></div>';
+        const color = val >= 80 ? '#10B981' : val >= 50 ? '#F59E0B' : '#F43F5E';
+        return '<div class="flex items-center gap-4"><span class="text-sm text-white/50 w-40 flex-shrink-0">' + key.replace(/_/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase()) + '</span><div class="flex-1 progress-track"><div class="progress-fill" style="width: ' + val + '%; background: linear-gradient(90deg, ' + color + '88, ' + color + ');"></div></div><span class="text-sm font-mono font-semibold w-12 text-right" style="color: ' + color + '">' + val + '%</span></div>';
       }).join('');
 
+      // Risk - Prominent
+      const risk = data.risk || {};
+      const riskBreach = !risk.risk_gate_tests_passing;
+      const riskCard = document.getElementById('riskCard');
+      if (riskBreach) {
+        riskCard.classList.add('risk-card-pulse');
+      } else {
+        riskCard.classList.remove('risk-card-pulse');
+      }
+      
+      document.getElementById('riskStatusBadge').innerHTML = getBadge(riskBreach ? 'THRESHOLD BREACH' : 'WITHIN LIMITS', riskBreach ? 'danger' : 'success');
+      
+      document.getElementById('riskMetrics').innerHTML = [
+        { label: 'Max Risk/Trade', value: (risk.max_risk_per_trade_pct || 0) + '%', warn: risk.max_risk_per_trade_pct > 2 },
+        { label: 'Max Positions', value: (risk.max_concurrent_positions || 0), warn: false },
+        { label: 'Soft Drawdown', value: (risk.soft_drawdown_pct || 0) + '%', warn: false },
+        { label: 'Hard Drawdown', value: (risk.hard_drawdown_pct || 0) + '%', warn: false },
+        { label: 'Max Leverage', value: (risk.max_leverage || 0) + 'x', warn: risk.max_leverage > 5 },
+        { label: 'Kill Switch', value: risk.kill_switch_wired ? 'WIRED' : 'NOT WIRED', warn: !risk.kill_switch_wired },
+      ].map(item => '<div class="bg-white/[0.03] rounded-xl p-4 border border-white/[0.06]"><p class="text-xs text-white/40 mb-1">' + item.label + '</p><p class="text-lg font-mono font-bold ' + (item.warn ? 'text-rose-400' : 'text-white/90') + '">' + item.value + '</p></div>').join('');
+
+      // Auth
       const auth = data.auth || {};
-      document.getElementById('authMetrics').innerHTML = '<div class="metric"><span class="metric-label">Type</span><span class="metric-value">' + (auth.type || 'N/A') + '</span></div><div class="metric"><span class="metric-label">Library</span><span class="metric-value">' + (auth.library || 'N/A') + '</span></div><div class="metric"><span class="metric-label">Gate Active</span><span class="badge ' + (auth.gate_active ? 'badge-success' : 'badge-danger') + '">' + (auth.gate_active ? 'Yes' : 'No') + '</span></div><div class="metric"><span class="metric-label">Session Method</span><span class="metric-value">' + (auth.session_method || 'N/A') + '</span></div><div class="metric"><span class="metric-label">Passkey Registered</span><span class="badge ' + (auth.passkey_registered ? 'badge-success' : 'badge-warning') + '">' + (auth.passkey_registered ? 'Yes' : 'No') + '</span></div>';
+      document.getElementById('authMetrics').innerHTML = [
+        ['Type', auth.type || 'N/A'], ['Library', auth.library || 'N/A'], ['Session', auth.session_method || 'N/A']
+      ].map(([k, v]) => '<div class="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0"><span class="text-sm text-white/40">' + k + '</span><span class="text-sm font-mono text-white/80">' + v + '</span></div>').join('') + '<div class="flex gap-2 mt-3">' + getBadge(auth.gate_active ? 'GATE ACTIVE' : 'GATE INACTIVE', auth.gate_active ? 'success' : 'danger') + getBadge(auth.passkey_registered ? 'PASSKEY OK' : 'NO PASSKEY', auth.passkey_registered ? 'success' : 'warning') + '</div>';
 
+      // Infra
       const cf = data.cloudflare || {};
-      document.getElementById('infraMetrics').innerHTML = '<div class="metric"><span class="metric-label">KV Namespaces</span><span class="metric-value">' + (cf.kv_namespaces || []).length + ' bound</span></div><div class="metric"><span class="metric-label">D1 Databases</span><span class="metric-value">' + (cf.d1_databases || []).length + ' bound</span></div><div class="metric"><span class="metric-label">Queues</span><span class="metric-value">' + (cf.queues || []).length + ' bound</span></div><div class="metric"><span class="metric-label">Secrets</span><span class="metric-value">' + (cf.secrets_configured || []).length + ' configured</span></div>';
+      document.getElementById('infraMetrics').innerHTML = [
+        ['KV Namespaces', (cf.kv_namespaces || []).length + ' bound'],
+        ['D1 Databases', (cf.d1_databases || []).length + ' bound'],
+        ['Queues', (cf.queues || []).length + ' bound'],
+        ['Secrets', (cf.secrets_configured || []).length + ' configured']
+      ].map(([k, v]) => '<div class="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0"><span class="text-sm text-white/40">' + k + '</span><span class="text-sm font-mono text-white/80">' + v + '</span></div>').join('');
 
+      // Frontend
       const fe = data.frontend || {};
       const components = fe.components || {};
-      document.getElementById('frontendMetrics').innerHTML = '<div class="metric"><span class="metric-label">Auth Type</span><span class="metric-value">' + (fe.auth_type || 'N/A') + '</span></div><div class="metric"><span class="metric-label">Chart Library</span><span class="metric-value">' + (fe.chart_library || 'N/A') + '</span></div><div class="metric"><span class="metric-label">KV Polling</span><span class="badge ' + (fe.kv_polling_active ? 'badge-success' : 'badge-danger') + '">' + (fe.kv_polling_active ? 'Active' : 'Inactive') + '</span></div><div style="margin-top: 1rem;">' + Object.entries(components).map(([k, v]) => '<div class="status-item"><div class="status-dot ' + (v ? 'green' : 'red') + '"></div><span>' + k.replace(/_/g, ' ') + '</span></div>').join('') + '</div>';
+      document.getElementById('frontendMetrics').innerHTML = '<div class="space-y-3 mb-4"><div class="flex items-center justify-between"><span class="text-sm text-white/40">Chart Library</span><span class="text-sm font-mono text-white/80">' + (fe.chart_library || 'N/A') + '</span></div><div class="flex items-center justify-between"><span class="text-sm text-white/40">KV Polling</span>' + getBadge(fe.kv_polling_active ? 'ACTIVE' : 'INACTIVE', fe.kv_polling_active ? 'success' : 'danger') + '</div></div><div class="grid grid-cols-2 gap-2">' + Object.entries(components).map(([k, v]) => '<div class="flex items-center gap-2 p-2 rounded-lg ' + (v ? 'bg-emerald-500/10' : 'bg-white/[0.03]') + '">' + getStatusDot(v ? 'online' : 'offline') + '<span class="text-xs text-white/60">' + k.replace(/_/g, ' ') + '</span></div>').join('') + '</div>';
 
-      const risk = data.risk || {};
-      document.getElementById('riskMetrics').innerHTML = '<div class="metric"><span class="metric-label">Max Risk/Trade</span><span class="metric-value">' + (risk.max_risk_per_trade_pct || 0) + '%</span></div><div class="metric"><span class="metric-label">Max Positions</span><span class="metric-value">' + (risk.max_concurrent_positions || 0) + '</span></div><div class="metric"><span class="metric-label">Soft Drawdown</span><span class="metric-value">' + (risk.soft_drawdown_pct || 0) + '%</span></div><div class="metric"><span class="metric-label">Hard Drawdown</span><span class="metric-value">' + (risk.hard_drawdown_pct || 0) + '%</span></div><div class="metric"><span class="metric-label">Max Leverage</span><span class="metric-value">' + (risk.max_leverage || 0) + 'x</span></div><div class="metric"><span class="metric-label">Kill Switch</span><span class="badge ' + (risk.kill_switch_wired ? 'badge-success' : 'badge-danger') + '">' + (risk.kill_switch_wired ? 'Wired' : 'Not Wired') + '</span></div><div class="metric"><span class="metric-label">Risk Gate Tests</span><span class="badge ' + (risk.risk_gate_tests_passing ? 'badge-success' : 'badge-warning') + '">' + (risk.risk_gate_tests_passing ? 'Passing' : 'Failing') + '</span></div>';
-
-      const kv = data.kv_data || {};
-      document.getElementById('kvMetrics').innerHTML = Object.entries(kv).map(([k, v]) => '<div class="status-item"><div class="status-dot ' + (v.exists ? (v.value || v.has_balance || v.has_equity ? 'green' : 'yellow') : 'red') + '"></div><span>' + k.replace(/_/g, ' ') + '</span></div>').join('');
-
+      // VPS
       const vps = data.vps || {};
-      document.getElementById('vpsMetrics').innerHTML = '<div class="metric"><span class="metric-label">Reachable</span><span class="badge ' + (vps.reachable ? 'badge-success' : 'badge-danger') + '">' + (vps.reachable ? 'Yes' : 'No') + '</span></div><div class="metric"><span class="metric-label">Response Time</span><span class="metric-value">' + (vps.response_ms || 0) + 'ms</span></div><div class="metric"><span class="metric-label">Daemon Version</span><span class="metric-value">' + (vps.daemon_version || 'N/A') + '</span></div><div class="metric"><span class="metric-label">LangGraph</span><span class="badge ' + (vps.langgraph_running ? 'badge-success' : 'badge-warning') + '">' + (vps.langgraph_running ? 'Running' : 'Stopped') + '</span></div><div class="metric"><span class="metric-label">Agents Initialized</span><span class="badge ' + (vps.agents_initialized ? 'badge-success' : 'badge-warning') + '">' + (vps.agents_initialized ? 'Yes' : 'No') + '</span></div><div class="metric"><span class="metric-label">Evolution Loop</span><span class="badge ' + (vps.evolution_loop_running ? 'badge-success' : 'badge-warning') + '">' + (vps.evolution_loop_running ? 'Running' : 'Stopped') + '</span></div><div class="metric"><span class="metric-label">Paper Mode</span><span class="badge ' + (vps.paper_mode_active ? 'badge-success' : 'badge-warning') + '">' + (vps.paper_mode_active ? 'Active' : 'Inactive') + '</span></div>';
+      document.getElementById('vpsMetrics').innerHTML = [
+        ['Reachable', vps.reachable ? 'YES' : 'NO', vps.reachable ? 'success' : 'danger'],
+        ['Response', (vps.response_ms || 0) + 'ms', 'info'],
+        ['LangGraph', vps.langgraph_running ? 'RUNNING' : 'STOPPED', vps.langgraph_running ? 'success' : 'warning'],
+        ['Agents', vps.agents_initialized ? 'INIT' : 'NOT INIT', vps.agents_initialized ? 'success' : 'warning'],
+        ['Evolution', vps.evolution_loop_running ? 'RUNNING' : 'STOPPED', vps.evolution_loop_running ? 'success' : 'warning'],
+        ['Paper Mode', vps.paper_mode_active ? 'ACTIVE' : 'INACTIVE', vps.paper_mode_active ? 'success' : 'warning']
+      ].map(([k, v, t]) => '<div class="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0"><span class="text-sm text-white/40">' + k + '</span>' + getBadge(v, t) + '</div>').join('');
 
-      document.getElementById('routesList').innerHTML = (data.routes || []).map(r => '<div class="status-item"><div class="status-dot ' + (r.exists ? 'green' : 'red') + '"></div><span>' + r.path + '</span></div>').join('');
+      // KV
+      const kv = data.kv_data || {};
+      document.getElementById('kvMetrics').innerHTML = Object.entries(kv).map(([k, v]) => '<div class="flex items-center gap-2 p-3 rounded-xl ' + (v.exists ? (v.value || v.has_balance || v.has_equity ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20') : 'bg-white/[0.03] border border-white/[0.06]') + '">' + getStatusDot(v.exists ? (v.value || v.has_balance || v.has_equity ? 'online' : 'warning') : 'offline') + '<span class="text-xs text-white/60">' + k.replace(/_/g, ' ') + '</span></div>').join('');
 
+      // Routes
+      document.getElementById('routesList').innerHTML = (data.routes || []).map(r => '<div class="flex items-center gap-2 p-3 rounded-xl ' + (r.exists ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-rose-500/10 border border-rose-500/20') + '">' + getStatusDot(r.exists ? 'online' : 'error') + '<span class="text-xs font-mono text-white/70">' + r.path + '</span></div>').join('');
+
+      // Repo
       const repo = data.repo || {};
-      document.getElementById('repoMetrics').innerHTML = Object.entries(repo).map(([k, v]) => '<div class="status-item"><div class="status-dot ' + (v ? 'green' : 'red') + '"></div><span>' + k.replace(/_/g, ' ').replace(/exists$/, '') + '</span></div>').join('');
+      document.getElementById('repoMetrics').innerHTML = Object.entries(repo).map(([k, v]) => '<div class="flex items-center gap-2 p-3 rounded-xl ' + (v ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-white/[0.03] border border-white/[0.06]') + '">' + getStatusDot(v ? 'online' : 'offline') + '<span class="text-xs text-white/60">' + k.replace(/_/g, ' ').replace(/exists$/, '') + '</span></div>').join('');
 
+      // Raw JSON
       document.getElementById('rawJson').textContent = JSON.stringify(data, null, 2);
+
+      // Scroll
       document.getElementById('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   </script>

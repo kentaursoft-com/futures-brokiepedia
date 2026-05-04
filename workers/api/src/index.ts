@@ -55,7 +55,7 @@ function validateSession(request: Request): boolean {
       const parts = token.split(".");
       if (parts.length !== 3) return false;
       const payload = JSON.parse(atob(parts[1]));
-      if (payload.exp && payload.exp < Date.now()) return false;
+      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return false;
       return true;
     } catch {
       return false;
@@ -79,7 +79,7 @@ function validateSession(request: Request): boolean {
     const parts = sessionToken.split(".");
     if (parts.length !== 3) return false;
     const payload = JSON.parse(atob(parts[1]));
-    if (payload.exp && payload.exp < Date.now()) return false;
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return false;
     return true;
   } catch {
     return false;

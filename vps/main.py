@@ -19,6 +19,13 @@ try:
 except ImportError:
     HEALTH_REPORTER_AVAILABLE = False
     print("[warn] health_reporter not available")
+    
+    # Dummy RiskGate if module not available
+    class RiskGate:
+        def __init__(self, **kwargs):
+            self.config = kwargs
+        def check(self, **kwargs):
+            return {"allowed": True, "reason": "risk_gate_not_loaded"}
 
 # Risk gate instance
 risk_gate = RiskGate(
