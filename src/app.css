@@ -36,12 +36,21 @@
   }
   html {
     scroll-behavior: smooth;
+    font-size: 16px;
+  }
+  @media (max-width: 640px) {
+    html {
+      font-size: 18px;
+    }
   }
   body {
     @apply bg-navy text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
   }
 }
 

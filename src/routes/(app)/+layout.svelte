@@ -74,7 +74,7 @@
 
 <div class="min-h-screen bg-navy text-white flex font-sans">
   <!-- Desktop Sidebar - Icon Only, Expands on Hover -->
-  <aside class="hidden sm:flex flex-col fixed left-0 top-0 h-screen z-40 w-[72px] hover:w-56 group transition-all duration-300 ease-out bg-navy/90 backdrop-blur-glass border-r border-white/[0.06]">
+  <aside class="hidden sm:flex flex-col fixed left-0 top-0 h-screen z-40 w-[72px] hover:w-56 group transition-all duration-300 ease-out bg-navy/90 backdrop-blur-glass border-r border-white/[0.06] flex-shrink-0">
     <!-- Logo -->
     <div class="h-16 flex items-center px-5 border-b border-white/[0.06] overflow-hidden">
       <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
@@ -130,9 +130,9 @@
   </aside>
   
   <!-- Main Content Area -->
-  <div class="flex-1 flex flex-col min-h-screen sm:ml-[72px]">
+  <div class="flex-1 flex flex-col min-h-screen sm:ml-[72px] w-full">
     <!-- Top Header - Glassmorphic -->
-    <header class="h-16 sticky top-0 z-30 bg-navy/70 backdrop-blur-glass border-b border-white/[0.06] flex items-center px-4 sm:px-6">
+    <header class="h-14 sm:h-16 sticky top-0 z-30 bg-navy/70 backdrop-blur-glass border-b border-white/[0.06] flex items-center px-4 sm:px-6">
       <!-- Mobile Brand -->
       <div class="sm:hidden flex items-center gap-3 mr-4">
         <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">

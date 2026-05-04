@@ -26,18 +26,18 @@
 <!-- Bottom Navigation - Mobile Only -->
 <nav class="fixed bottom-0 left-0 right-0 z-50 sm:hidden">
   <!-- Frosted glass backdrop -->
-  <div class="absolute inset-0 bg-navy/80 backdrop-blur-glass border-t border-white/10"></div>
+  <div class="absolute inset-0 bg-navy/90 backdrop-blur-glass border-t border-white/10"></div>
   
-  <div class="relative flex items-center justify-around px-2 py-2">
+  <div class="relative flex items-center justify-around px-2 py-3">
     {#each items.slice(0, 4) as item}
       {@const isActive = currentPath === item.path}
       <button
-        class="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all duration-200 {isActive ? 'text-emerald-400' : 'text-white/40 hover:text-white/70'}"
+        class="flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-all duration-200 {isActive ? 'text-emerald-400' : 'text-white/40 hover:text-white/70'}"
         on:click={() => navigate(item.path)}
       >
         <div class="relative">
           <svg 
-            class="w-5 h-5 transition-transform duration-200 {isActive ? 'scale-110' : ''}" 
+            class="w-6 h-6 transition-transform duration-200 {isActive ? 'scale-110' : ''}" 
             fill="none" 
             stroke="currentColor" 
             viewBox="0 0 24 24"
@@ -46,10 +46,10 @@
             <path stroke-linecap="round" stroke-linejoin="round" d={icons[item.icon] || icons.dashboard}></path>
           </svg>
           {#if isActive}
-            <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]"></div>
+            <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]"></div>
           {/if}
         </div>
-        <span class="text-[10px] font-medium tracking-wide">{item.label}</span>
+        <span class="text-xs font-medium tracking-wide">{item.label}</span>
       </button>
     {/each}
   </div>
