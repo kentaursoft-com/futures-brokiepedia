@@ -1,9 +1,11 @@
 <script lang="ts">
 	import '../app.css';
+	import Toast from '$lib/components/Toast.svelte';
 </script>
 
 <div class="min-h-screen bg-background text-foreground">
 	<slot />
+	<Toast />
 </div>
 
 <style>

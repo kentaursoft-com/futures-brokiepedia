@@ -1,6 +1,7 @@
 name = "futures-brokiepedia-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-15"
+account_id = "c65f65732da865ff4ac95eb6083a1f74"
 
 # Durable Objects (for WebSocket sessions if needed later)
 # [[durable_objects.bindings]]

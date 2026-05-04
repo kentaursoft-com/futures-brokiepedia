@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import OrderBook from '$lib/components/OrderBook.svelte';
 	import OrderForm from '$lib/components/OrderForm.svelte';
-	import CryptoIcon from '$lib/components/CryptoIcon.svelte';
 	import { binanceWS } from '$lib/websocket';
 	
 	let wsConnected = false;
@@ -17,6 +16,11 @@
 	onMount(() => {
 		binanceWS.connect();
 	});
+	
+	onDestroy(() => {
+		unsubscribe();
+		binanceWS.disconnect();
+	});
 </script>
 
 <svelte:head>
@@ -29,12 +33,14 @@
 		<div class="flex items-center gap-6">
 			<div>
 				<div class="flex items-center gap-2">
-					<CryptoIcon symbol="BTC" size={20} />
+					<img src="https://assets.coingecko.com/coins/images/1/small/bitcoin.png" alt="BTC" class="w-5 h-5 rounded-full" />
 					<span class="text-muted-foreground text-sm">BTC-PERP</span>
 				</div>
 				<div class="flex items-center gap-2">
-					<span class="text-2xl font-bold font-mono">$78,623.25</span>
-					<span class="text-sm text-green-400">+1.24%</span>
+					<span class="text-2xl font-bold font-mono">${$binanceWS.lastPrice?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '78,623.25'}</span>
+					<span class="text-sm {$binanceWS.ticker?.change24hPct >= 0 ? 'text-green-400' : 'text-red-400'}">
+						{$binanceWS.ticker?.change24hPct >= 0 ? '+' : ''}{$binanceWS.ticker?.change24hPct?.toFixed(2) || '+1.24'}%
+					</span>
 				</div>
 			</div>
 			<div class="h-8 w-px bg-border"></div>

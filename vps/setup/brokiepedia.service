@@ -1,0 +1,19 @@
+[Unit]
+Description=Futures Brokiepedia VPS Daemon
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/brokiepedia/vps
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/home/ubuntu/brokiepedia/.env
+ExecStart=/home/ubuntu/brokiepedia/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

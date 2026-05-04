@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { toast } from '$lib/toast';
 	
 	let activeSection = 'api';
 	
@@ -58,8 +59,67 @@
 	const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
 	const logLevels = ['debug', 'info', 'warn', 'error'];
 	
-	function saveSettings() {
-		alert('Settings saved! (Demo - would save to backend)');
+	let isSaving = false;
+	let hasUnsavedChanges = false;
+	
+	function markChanged() {
+		hasUnsavedChanges = true;
+	}
+	
+	async function saveSettings() {
+		try {
+			isSaving = true;
+			const token = localStorage.getItem('auth_token');
+			const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/settings', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${token}`
+				},
+				body: JSON.stringify({
+					apiKeys: {
+						binance: apiKeys.binance ? '***' : '',
+						binanceSecret: apiKeys.binanceSecret ? '***' : '',
+						deepseek: apiKeys.deepseek ? '***' : '',
+						telegram: apiKeys.telegram ? '***' : '',
+						turso: apiKeys.turso ? '***' : ''
+					},
+					trading: tradingPrefs,
+					notifications: notifications,
+					system: systemSettings
+				})
+			});
+			
+			if (res.ok) {
+				hasUnsavedChanges = false;
+				toast.success('Settings saved successfully!');
+			} else {
+				const err = await res.json();
+				toast.error(err.error || 'Failed to save settings');
+			}
+		} catch (err) {
+			toast.error('Network error. Please try again.');
+			console.error('Save settings error:', err);
+		} finally {
+			isSaving = false;
+		}
+	}
+	
+	async function loadSettings() {
+		try {
+			const token = localStorage.getItem('auth_token');
+			const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/settings', {
+				headers: { 'Authorization': `Bearer ${token}` }
+			});
+			if (res.ok) {
+				const data = await res.json();
+				if (data.trading) tradingPrefs = { ...tradingPrefs, ...data.trading };
+				if (data.notifications) notifications = { ...notifications, ...data.notifications };
+				if (data.system) systemSettings = { ...systemSettings, ...data.system };
+			}
+		} catch (err) {
+			console.error('Load settings error:', err);
+		}
 	}
 	
 	function isPasskeySupported() {
@@ -73,7 +133,7 @@
 			passkeySuccess = '';
 			
 			// Get challenge from server
-			const challengeRes = await fetch('/api/v1/auth/challenge');
+			const challengeRes = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/auth/challenge');
 			if (!challengeRes.ok) throw new Error('Failed to get challenge');
 			
 			const { challenge, rp } = await challengeRes.json();
@@ -105,7 +165,7 @@
 			}
 			
 			// Send to server
-			const verifyRes = await fetch('/api/v1/auth/register', {
+			const verifyRes = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/auth/register', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -142,6 +202,7 @@
 	}
 	
 	onMount(() => {
+		loadSettings();
 		// Check if passkey is supported and if user already has one registered
 		// In a real app, you'd fetch this from the backend
 		hasPasskey = false;
@@ -562,12 +623,29 @@
 			{/if}
 			
 			<!-- Save Button -->
-			<div class="mt-6 flex justify-end">
+			<div class="mt-6 flex items-center justify-end gap-3">
+				{#if hasUnsavedChanges}
+					<span class="text-sm text-amber-400 flex items-center gap-1">
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+						</svg>
+						Unsaved changes
+					</span>
+				{/if}
 				<button 
 					on:click={saveSettings}
-					class="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+					disabled={isSaving}
+					class="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 				>
-					Save Settings
+					{#if isSaving}
+						<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						Saving...
+					{:else}
+						Save Settings
+					{/if}
 				</button>
 			</div>
 		</div>

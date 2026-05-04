@@ -4,15 +4,55 @@
 	import { goto } from '$app/navigation';
 	import { liveState, startPolling } from '$lib/api';
 	import { onMount } from 'svelte';
-	import CryptoIcon from '$lib/components/CryptoIcon.svelte';
+
 	
 	let sidebarOpen = true;
 	let mobileMenuOpen = false;
 	let userMenuOpen = false;
 	let stopPolling: (() => void) | null = null;
+	let tickerPrices: Record<string, { price: string; change: number }> = {};
+	let tickerInterval: ReturnType<typeof setInterval>;
+	
+	const tickerSymbols = [
+		{ symbol: 'BTCUSDT', label: 'BTC', icon: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png' },
+		{ symbol: 'ETHUSDT', label: 'ETH', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png' },
+		{ symbol: 'SOLUSDT', label: 'SOL', icon: 'https://assets.coingecko.com/coins/images/4128/small/solana.png' },
+		{ symbol: 'BNBUSDT', label: 'BNB', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png' },
+		{ symbol: 'XRPUSDT', label: 'XRP', icon: 'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png' },
+		{ symbol: 'ADAUSDT', label: 'ADA', icon: 'https://assets.coingecko.com/coins/images/975/small/cardano.png' },
+		{ symbol: 'DOGEUSDT', label: 'DOGE', icon: 'https://assets.coingecko.com/coins/images/5/small/dogecoin.png' },
+		{ symbol: 'DOTUSDT', label: 'DOT', icon: 'https://assets.coingecko.com/coins/images/12171/small/polkadot.png' },
+		{ symbol: 'AVAXUSDT', label: 'AVAX', icon: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png' },
+		{ symbol: 'LINKUSDT', label: 'LINK', icon: 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png' },
+	];
+	
+	async function fetchTickerPrices() {
+		try {
+			const symbols = tickerSymbols.map(s => s.symbol);
+			const res = await fetch(`https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/prices?symbols=${encodeURIComponent(JSON.stringify(symbols))}`);
+			if (res.ok) {
+				const data = await res.json();
+				data.forEach((ticker: any) => {
+					tickerPrices[ticker.symbol] = {
+						price: parseFloat(ticker.lastPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+						change: parseFloat(ticker.priceChangePercent)
+					};
+				});
+				tickerPrices = tickerPrices;
+			}
+		} catch (err) {
+			console.error('Ticker fetch error:', err);
+		}
+	}
 	
 	onMount(() => {
 		stopPolling = startPolling(5000);
+		fetchTickerPrices();
+		tickerInterval = setInterval(fetchTickerPrices, 5000);
+		return () => {
+			if (stopPolling) stopPolling();
+			clearInterval(tickerInterval);
+		};
 	});
 	
 	$: daemonConnected = $liveState ? true : false;
@@ -119,39 +159,24 @@
 				</svg>
 			</button>
 			
-			<!-- TradingView Ticker Tape -->
-			<div class="flex-1 overflow-hidden">
-				<div class="tradingview-widget-container">
-					<div class="tradingview-widget-container__widget"></div>
-					<script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
-						{
-							"symbols": [
-								{"proName": "BINANCE:BTCUSDT", "title": "BTC"},
-								{"proName": "BINANCE:ETHUSDT", "title": "ETH"},
-								{"proName": "BINANCE:SOLUSDT", "title": "SOL"},
-								{"proName": "BINANCE:BNBUSDT", "title": "BNB"},
-								{"proName": "BINANCE:XRPUSDT", "title": "XRP"},
-								{"proName": "BINANCE:ADAUSDT", "title": "ADA"},
-								{"proName": "BINANCE:DOGEUSDT", "title": "DOGE"},
-								{"proName": "BINANCE:DOTUSDT", "title": "DOT"},
-								{"proName": "BINANCE:MATICUSDT", "title": "MATIC"},
-								{"proName": "BINANCE:AVAXUSDT", "title": "AVAX"},
-								{"proName": "BINANCE:LINKUSDT", "title": "LINK"},
-								{"proName": "BINANCE:LTCUSDT", "title": "LTC"},
-								{"proName": "BINANCE:UNIUSDT", "title": "UNI"},
-								{"proName": "BINANCE:ATOMUSDT", "title": "ATOM"},
-								{"proName": "BINANCE:ETCUSDT", "title": "ETC"},
-								{"proName": "BINANCE:NEARUSDT", "title": "NEAR"},
-								{"proName": "BINANCE:FILUSDT", "title": "FIL"},
-								{"proName": "BINANCE:TRXUSDT", "title": "TRX"}
-							],
-							"showSymbolLogo": true,
-							"colorTheme": "dark",
-							"isTransparent": true,
-							"displayMode": "adaptive",
-							"locale": "en"
-						}
-					</script>
+			<!-- Live Crypto Ticker -->
+			<div class="flex-1 overflow-hidden flex items-center">
+				<div class="flex items-center gap-6 px-4 overflow-x-auto whitespace-nowrap">
+					{#each tickerSymbols as { symbol, label, icon } (symbol)}
+						<div class="flex items-center gap-2 flex-shrink-0">
+							<img 
+								src={icon}
+								alt={label}
+								class="w-4 h-4 rounded-full"
+								on:error={(e) => { e.target.style.display = 'none'; }}
+							/>
+							<span class="text-sm font-medium">{label}</span>
+							<span class="text-sm">${tickerPrices[symbol]?.price ?? '--'}</span>
+							<span class="text-xs {tickerPrices[symbol]?.change >= 0 ? 'text-green-400' : 'text-red-400'}">
+								{tickerPrices[symbol]?.change >= 0 ? '+' : ''}{tickerPrices[symbol]?.change?.toFixed(2) ?? '--'}%
+							</span>
+						</div>
+					{/each}
 				</div>
 			</div>
 			

@@ -90,7 +90,7 @@
 						</thead>
 						<tbody>
 							{#each mockPositions as pos}
-								<tr class="border-b border-border/50 hover:bg-muted/50">
+								<tr class="border-b border-border/50 hover:bg-muted/50 {pos.leverage > 5 ? 'border-l-2 border-l-red-500' : ''}">
 									<td class="py-3 font-medium">
 										<div class="flex items-center gap-2">
 											<CryptoIcon symbol={pos.symbol} size={20} />
@@ -105,7 +105,11 @@
 									<td class="py-3">{pos.size}</td>
 									<td class="py-3 font-mono">${pos.entry_price.toLocaleString()}</td>
 									<td class="py-3 font-mono">${pos.mark_price.toLocaleString()}</td>
-									<td class="py-3">{pos.leverage}x</td>
+									<td class="py-3">
+										<span class="text-xs px-2 py-1 rounded-full {pos.leverage > 5 ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-gray-500/20 text-gray-400'}">
+											{pos.leverage}x {#if pos.leverage > 5}⚠️ EXCEEDS{/if}
+										</span>
+									</td>
 									<td class="py-3">${pos.margin.toLocaleString()}</td>
 									<td class="py-3 {pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">
 										{pos.unrealized_pnl >= 0 ? '+' : ''}${pos.unrealized_pnl.toFixed(2)}
@@ -119,6 +123,7 @@
 							{/each}
 						</tbody>
 					</table>
+					<p class="text-xs text-red-400 mt-3">⚠️ Max allowed leverage: 5x per risk parameters</p>
 				</div>
 				
 			{:else if activeTab === 'orders'}

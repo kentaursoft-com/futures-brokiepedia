@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { toast } from '$lib/toast';
+	
 	let username = '';
 	let password = '';
 	let isLoading = false;
@@ -12,10 +14,11 @@
 			
 			if (!username.trim() || !password.trim()) {
 				error = 'Please enter both username and password';
+				toast.error('Please enter both username and password');
 				return;
 			}
 			
-			const res = await fetch('/api/v1/auth/login', {
+			const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/auth/login', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ username: username.trim(), password })
@@ -27,16 +30,18 @@
 				throw new Error(data.error || 'Login failed');
 			}
 			
-			// Set session cookie
+			// Store token for API client (localStorage) AND cookie for SSR
+			localStorage.setItem('auth_token', data.token);
 			document.cookie = `session_token=${data.token}; path=/; max-age=86400; SameSite=Strict`;
 			
-			success = 'Welcome back! Redirecting...';
+			toast.success('Welcome back! Redirecting...');
 			setTimeout(() => {
 				window.location.href = '/';
 			}, 800);
 			
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Login failed. Please try again.';
+			toast.error(error);
 			console.error('Login error:', err);
 		} finally {
 			isLoading = false;
