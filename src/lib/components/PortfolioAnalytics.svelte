@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { createChart, LineSeries, HistogramSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts';
+	import { createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+	import Icon from './Icon.svelte';
 	
 	interface MonthlyPnL {
 		month: string;
@@ -49,7 +50,7 @@
 		});
 		
 		const data = monthlyData.map((m, i) => ({
-			time: i,
+			time: i as Time,
 			value: m.pnl,
 			color: m.pnl >= 0 ? '#10b98180' : '#ef444480'
 		}));
@@ -125,7 +126,10 @@
 			{/each}
 		</div>
 		{#if correlations.some(c => c.corr > 0.7)}
-			<p class="mt-2 text-xs text-red-400">⚠️ High correlation detected — risk of concentrated exposure</p>
+			<p class="mt-2 text-xs text-red-400">
+				<Icon name="warning" size="0.875rem" class_name="text-red-400" />
+				High correlation detected — risk of concentrated exposure
+			</p>
 		{/if}
 	</div>
 </div>

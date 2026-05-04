@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
+	
 	interface OrderParams {
 		symbol: string;
 		side: 'long' | 'short';
@@ -164,7 +166,14 @@
 			on:click={submitOrder}
 			class="w-full rounded-md {order.side === 'long' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'} px-4 py-3 text-sm font-medium text-white transition-colors"
 		>
-			{order.side === 'long' ? '🟢 Buy' : '🔴 Sell'} {order.symbol}
+			{#if order.side === 'long'}
+			<Icon name="arrow-up" size="1rem" color="white" />
+			Buy
+		{:else}
+			<Icon name="arrow-down" size="1rem" color="white" />
+			Sell
+		{/if}
+		{order.symbol}
 		</button>
 	</div>
 </div>

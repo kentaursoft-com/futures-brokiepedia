@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
+	
 	interface Alert {
 		id: string;
 		type: 'price' | 'rsi' | 'drawdown' | 'custom';
@@ -52,7 +54,7 @@
 	}
 	
 	function getAlertIcon(type: string) {
-		return type === 'price' ? '💰' : type === 'rsi' ? '📊' : type === 'drawdown' ? '⚠️' : '🔔';
+		return type === 'price' ? 'dollar' : type === 'rsi' ? 'bar-chart' : type === 'drawdown' ? 'warning' : 'alarm';
 	}
 	
 	function formatTime(ts: number) {
@@ -119,7 +121,7 @@
 		{#each alerts as alert}
 			<div class="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2 {alert.triggered ? 'border border-amber-500/30' : ''}">
 				<div class="flex items-center gap-2">
-					<span class="text-lg">{getAlertIcon(alert.type)}</span>
+					<Icon name={getAlertIcon(alert.type)} size="1.5rem" class_name="text-muted-foreground" />
 					<div>
 						<p class="text-sm font-medium {alert.triggered ? 'text-amber-400' : ''}">{alert.message}</p>
 						<p class="text-xs text-muted-foreground">{alert.symbol} • {formatTime(alert.createdAt)}</p>

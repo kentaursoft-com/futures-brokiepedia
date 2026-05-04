@@ -1,4 +1,4 @@
-"""Main daemon entry point for Futures Brokiepedia."""
+"""Main daemon entry point for Futures Brokiepedia - Phase 5."""
 import asyncio
 import logging
 import signal
@@ -7,15 +7,17 @@ import threading
 from datetime import datetime
 
 from .config.settings import settings
+from .database.turso_client import TursoClient
 from .ingestion.binance_ws import BinanceFuturesIngestion
 from .ingestion.questdb_client import QuestDBClient
 from .agents.departments import DepartmentAgents
 from .agents.regime_classifier import MarketRegimeClassifier
 from .agents.back_office import BookKeeper, JournalingAgent, ResearcherAgent, HealthMonitor
 from .exchanges.exchange_layer import ExchangeAbstractionLayer
-from .exchanges.execution import ExecutionAgent
+from .trading.live_execution import LiveExecutionEngine
+from .analytics.performance import PerformanceAnalytics
 from .notifications.telegram import TelegramNotifier
-from .api.server import start_api_server, update_state
+from .api.server import start_api_server, update_state, set_daemon_refs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,17 +29,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 class TradingDaemon:
     def __init__(self):
         self.running = False
         self.ingestion = None
         self.questdb = None
+        self.turso = None
         self.departments = None
         self.regime_classifier = None
         self.exchanges = None
         self.execution = None
+        self.analytics = None
         self.notifier = None
         self.candle_buffer = []
+        self.current_regime = 'unknown'
+        self.last_analysis_time = 0
         
         # Back-office agents
         self.book_keeper = BookKeeper()
@@ -45,16 +52,20 @@ class TradingDaemon:
         self.researcher = ResearcherAgent()
         self.health_monitor = HealthMonitor()
         
-        # Tracking
-        self.today_pnl = 0.0
-        self.equity = 10000.0
-        self.open_positions = []
-        
     async def initialize(self):
         logger.info("=" * 60)
-        logger.info("Futures Brokiepedia Daemon v0.2.0")
+        logger.info("Futures Brokiepedia Daemon v1.0.0 - Phase 5")
         logger.info("=" * 60)
         logger.info(f"Mode: {'PAPER' if settings.is_paper_trading() else 'LIVE'} TRADING")
+        
+        # Turso (persistent storage)
+        try:
+            self.turso = TursoClient()
+            self.turso.connect()
+            logger.info("✅ Turso connected")
+        except Exception as e:
+            logger.warning(f"Turso not available: {e}")
+            self.turso = None
         
         # QuestDB
         self.questdb = QuestDBClient(
@@ -72,9 +83,13 @@ class TradingDaemon:
         await self.exchanges.initialize(['binance'])
         logger.info("✅ Exchange layer ready (8 exchanges supported)")
         
-        # Execution
-        self.execution = ExecutionAgent(self.exchanges)
-        logger.info("✅ Execution agent ready")
+        # Execution engine (Phase 5)
+        self.execution = LiveExecutionEngine(self.exchanges, self.turso)
+        logger.info("✅ Live execution engine ready")
+        
+        # Analytics
+        self.analytics = PerformanceAnalytics()
+        logger.info("✅ Performance analytics ready")
         
         # AI Departments
         self.departments = DepartmentAgents(
@@ -107,20 +122,28 @@ class TradingDaemon:
         # Initial state update
         self._update_dashboard_state()
         
+        # Set daemon refs for API server
+        set_daemon_refs({
+            'execution': self.execution,
+            'analytics': self.analytics,
+            'turso': self.turso
+        })
+        
     def _update_dashboard_state(self):
         """Push current state to API server."""
         health = self.health_monitor.get_status_summary()
+        exec_status = self.execution.get_status() if self.execution else {}
         
         update_state('system_status', 'paper' if settings.is_paper_trading() else 'live')
         update_state('active_asset', 'BTC-PERP')
-        update_state('regime', getattr(self, 'current_regime', 'unknown'))
-        update_state('today_pnl', self.today_pnl)
-        update_state('unrealized_pnl', sum(p.get('pnl', 0) for p in self.open_positions))
-        update_state('equity', self.equity)
-        update_state('daily_drawdown', 0.0)
-        update_state('execution_enabled', self.execution.execution_enabled)
-        update_state('kill_switch_triggered', not self.execution.execution_enabled)
-        update_state('positions', self.open_positions)
+        update_state('regime', self.current_regime)
+        update_state('today_pnl', exec_status.get('daily_pnl', 0))
+        update_state('unrealized_pnl', self.execution.positions.get_unrealized_pnl() if self.execution else 0)
+        update_state('equity', exec_status.get('equity', 10000))
+        update_state('daily_drawdown', exec_status.get('current_drawdown', 0))
+        update_state('execution_enabled', exec_status.get('execution_enabled', True))
+        update_state('kill_switch_triggered', not exec_status.get('execution_enabled', True))
+        update_state('positions', self.execution.positions.get_all_positions() if self.execution else [])
         update_state('health', {
             'vps': True,
             'binance': self.ingestion.running if self.ingestion else False,
@@ -140,6 +163,10 @@ class TradingDaemon:
         except Exception as e:
             logger.error(f"QuestDB write error: {e}")
         
+        # Update position prices
+        if self.execution:
+            await self.execution.update_positions()
+        
         # Analyze on closed candles
         if candle.get('is_closed') and len(self.candle_buffer) >= 50:
             asyncio.create_task(self._analyze_market())
@@ -148,6 +175,12 @@ class TradingDaemon:
         try:
             if len(self.candle_buffer) < 50:
                 return
+            
+            # Rate limit analysis
+            now = datetime.now().timestamp()
+            if now - self.last_analysis_time < 60:
+                return
+            self.last_analysis_time = now
             
             # Regime classification
             regime_result = self.regime_classifier.classify(self.candle_buffer)
@@ -175,7 +208,7 @@ class TradingDaemon:
                 regime=self.current_regime
             )
             
-            # Update department verdicts in dashboard state
+            # Update department verdicts
             verdicts = result.get('verdicts', [])
             update_state('departments', [
                 {
@@ -191,9 +224,11 @@ class TradingDaemon:
             
             signal = result.get('aggregated_signal', {})
             
-            # Log reasoning
-            if result.get('should_trade'):
+            # Execute if signal is strong
+            if result.get('should_trade') and self.execution:
                 trade_id = f"trade_{int(datetime.now().timestamp())}"
+                
+                # Log reasoning
                 await self.journaling.log_reasoning(
                     trade_id=trade_id,
                     verdicts=verdicts,
@@ -201,46 +236,28 @@ class TradingDaemon:
                     regime=self.current_regime
                 )
                 
-                # Execute if paper mode
-                if settings.is_paper_trading():
-                    order = await self.execution.execute_signal(
-                        signal={
-                            'symbol': 'BTCUSDT',
-                            'direction': signal['direction'],
-                            'entry_price': latest['close'],
-                            'size_multiplier': signal.get('size_reduction', 1.0)
-                        },
-                        strategy={'name': 'ai_aggregated', 'stop_loss_pct': 0.02}
-                    )
-                    
-                    if order:
-                        await self.book_keeper.record_trade({
-                            'id': order['id'],
-                            'symbol': 'BTCUSDT',
-                            'side': signal['direction'],
-                            'entry_price': latest['close'],
-                            'size': order.get('amount', 0),
-                            'exchange': 'binance',
-                            'regime': self.current_regime
-                        }, paper=True)
-                        
-                        # Track position
-                        self.open_positions.append({
-                            'symbol': 'BTC-PERP',
-                            'side': signal['direction'],
-                            'size': order.get('amount', 0),
-                            'entry': latest['close'],
-                            'mark': latest['close'],
-                            'pnl': 0,
-                            'exchange': 'Binance',
-                            'strategy': 'AI-Aggregated'
-                        })
-                        
-                        await self.notifier.send_alert('gate1_pass', {
-                            'strategy': 'AI-Aggregated',
-                            'direction': signal['direction'],
-                            'confidence': signal['confidence']
-                        })
+                # Execute trade
+                order = await self.execution.execute_signal(
+                    signal={
+                        'symbol': 'BTCUSDT',
+                        'direction': signal['direction'],
+                        'entry_price': latest['close'],
+                        'size_multiplier': signal.get('size_reduction', 1.0),
+                        'regime': self.current_regime,
+                        'reasoning': {
+                            'verdicts': verdicts,
+                            'aggregated': signal
+                        }
+                    },
+                    strategy={'name': 'AI-Aggregated', 'stop_loss_pct': 0.02}
+                )
+                
+                if order:
+                    await self.notifier.send_alert('gate1_pass', {
+                        'strategy': 'AI-Aggregated',
+                        'direction': signal['direction'],
+                        'confidence': signal['confidence']
+                    })
             
             # Update dashboard
             self._update_dashboard_state()
@@ -274,13 +291,38 @@ class TradingDaemon:
                 total = len(results)
                 logger.info(f"Health check: {healthy}/{total} services healthy")
                 
-                # Update dashboard health status
                 self._update_dashboard_state()
                 
             except Exception as e:
                 logger.error(f"Health check error: {e}")
             
             await asyncio.sleep(60)
+    
+    async def _daily_reset_loop(self):
+        """Reset daily stats at midnight."""
+        while self.running:
+            now = datetime.now()
+            
+            if now.hour == 0 and now.minute == 0:
+                if self.execution:
+                    self.execution.reset_daily_stats()
+                
+                if self.analytics and self.notifier:
+                    report = self.analytics.get_full_report()
+                    await self.notifier.send_message(
+                        f"📊 <b>Daily Summary</b>\n\n"
+                        f"Equity: ${self.execution.positions.equity:.2f}\n"
+                        f"Daily P&L: ${self.execution.positions.daily_pnl:.2f}\n"
+                        f"Total Return: {report.get('total_return_pct', 0):.2f}%\n"
+                        f"Sharpe: {report.get('sharpe_ratio', 0):.2f}\n"
+                        f"Max DD: {report.get('max_drawdown', {}).get('max_drawdown_pct', 0):.2f}%\n"
+                        f"Win Rate: {report.get('win_rate', {}).get('win_rate', 0):.1f}%\n"
+                        f"Trades: {report.get('total_trades', 0)}"
+                    )
+                
+                await asyncio.sleep(3600)  # Sleep for an hour to avoid multiple triggers
+            else:
+                await asyncio.sleep(30)  # Check every 30 seconds
     
     async def run(self):
         self.running = True
@@ -299,7 +341,8 @@ class TradingDaemon:
         # Start tasks
         tasks = [
             asyncio.create_task(self.ingestion.connect()),
-            asyncio.create_task(self._health_check_loop())
+            asyncio.create_task(self._health_check_loop()),
+            asyncio.create_task(self._daily_reset_loop())
         ]
         
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -314,10 +357,14 @@ class TradingDaemon:
             await self.exchanges.close()
         if self.questdb:
             self.questdb.close()
+        if self.turso:
+            self.turso.close()
         
         logger.info("Daemon shutdown complete")
 
+
 daemon = TradingDaemon()
+
 
 async def main():
     loop = asyncio.get_event_loop()
@@ -347,6 +394,7 @@ async def main():
         logger.critical(f"Daemon fatal error: {e}")
         await daemon.shutdown()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

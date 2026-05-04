@@ -7,23 +7,28 @@ compatibility_date = "2024-01-15"
 # name = "SESSIONS"
 # class_name = "Session"
 
-# KV Namespaces
+# KV Namespaces - Create via: wrangler kv:namespace create "LIVE_STATE"
 [[kv_namespaces]]
 binding = "LIVE_STATE"
-id = "futures_live_state_kv"
+id = "5a4fad79637d40e8a60ae1d2726bd331"
 
-# D1 Database
+# D1 Database - Create via: wrangler d1 create futures_audit
 [[d1_databases]]
 binding = "AUDIT_DB"
 database_name = "futures_audit"
-database_id = "your-d1-database-id"
+database_id = "c7d20ca7-b8c5-4b35-8446-e7e4146425bb"
 
-# Queues
-[[queues.producers]]
-binding = "AGENT_QUEUE"
-queue = "futures-agent-tasks"
+# Queues - Create via: wrangler queues create futures-agent-tasks
+# [[queues.producers]]
+# binding = "AGENT_QUEUE"
+# queue = "futures-agent-tasks"
 
-# Secrets (set via wrangler secret put)
+# Environment Variables (non-sensitive)
+[vars]
+# UPDATE THIS WITH YOUR VPS IP
+DAEMON_URL = "http://178.238.229.116:8081"
+
+# Secrets (set via wrangler secret put <NAME>)
 # DEEPSEEK_API_KEY
 # TELEGRAM_BOT_TOKEN
 # BINANCE_API_KEY

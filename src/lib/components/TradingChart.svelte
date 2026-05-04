@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts';
+	import { createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 	import { binanceWS, type Candle } from '../websocket';
 
 	let chartContainer: HTMLDivElement;
@@ -13,9 +13,9 @@
 	let ema20Series: ISeriesApi<'Line'>;
 	let ema50Series: ISeriesApi<'Line'>;
 
-	function calculateEMA(data: { time: number; value: number }[], period: number) {
+	function calculateEMA(data: { time: Time; value: number }[], period: number) {
 		const k = 2 / (period + 1);
-		const ema: { time: number; value: number }[] = [];
+		const ema: { time: Time; value: number }[] = [];
 		let prevEma = data[0]?.value || 0;
 
 		for (let i = 0; i < data.length; i++) {
@@ -31,7 +31,14 @@
 	}
 
 	onMount(() => {
+		// Connect to Binance WebSocket
+		binanceWS.connect();
+		
+		console.log('[TradingChart] Chart container dimensions:', chartContainer.clientWidth, chartContainer.clientHeight);
+		
 		chart = createChart(chartContainer, {
+			width: chartContainer.clientWidth,
+			height: chartContainer.clientHeight,
 			layout: {
 				background: { color: '#0a0a0a' },
 				textColor: '#d1d5db'
@@ -87,6 +94,7 @@
 
 		// Subscribe to candle updates
 		const unsubscribe = binanceWS.subscribe(state => {
+			console.log('[TradingChart] WS state:', state.connected, 'candles:', state.candles.length);
 			if (state.candles.length > 0) {
 				const chartData = state.candles.map((c: Candle) => ({
 					time: c.time,
@@ -95,6 +103,7 @@
 					low: c.low,
 					close: c.close
 				}));
+				console.log('[TradingChart] Setting data:', chartData.length, 'candles');
 
 				const volumeData = state.candles.map((c: Candle) => ({
 					time: c.time,
@@ -145,4 +154,4 @@
 	});
 </script>
 
-<div bind:this={chartContainer} class="w-full h-full min-h-[400px]"></div>
+<div bind:this={chartContainer} style="width: 100%; height: 500px;"></div>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { createChart, LineSeries, HistogramSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts';
+	import { createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 	import { binanceWS, type Candle } from '../websocket';
 	
 	export let height = 120;
@@ -19,9 +19,9 @@
 	let macdHistSeries: ISeriesApi<'Histogram'>;
 	let atrSeries: ISeriesApi<'Line'>;
 	
-	function calculateRSI(data: { time: number; value: number }[], period = 14) {
+	function calculateRSI(data: { time: Time; value: number }[], period = 14) {
 		if (data.length < period + 1) return [];
-		const rsi: { time: number; value: number }[] = [];
+		const rsi: { time: Time; value: number }[] = [];
 		let gains = 0, losses = 0;
 		
 		// Initial average
@@ -51,7 +51,7 @@
 		return rsi;
 	}
 	
-	function calculateMACD(data: { time: number; value: number }[], fast = 12, slow = 26, signal = 9) {
+	function calculateMACD(data: { time: Time; value: number }[], fast = 12, slow = 26, signal = 9) {
 		if (data.length < slow) return { macd: [], signal: [], histogram: [] };
 		
 		const ema = (values: number[], period: number) => {
@@ -70,9 +70,9 @@
 		const macdLine = emaFast.map((v, i) => v - emaSlow[i]);
 		const signalLine = ema(macdLine.slice(slow - fast), signal);
 		
-		const macd: { time: number; value: number }[] = [];
-		const sig: { time: number; value: number }[] = [];
-		const hist: { time: number; value: number; color?: string }[] = [];
+		const macd: { time: Time; value: number }[] = [];
+		const sig: { time: Time; value: number }[] = [];
+		const hist: { time: Time; value: number; color?: string }[] = [];
 		
 		for (let i = 0; i < signalLine.length; i++) {
 			const idx = i + slow - fast + signal - 1;
@@ -94,7 +94,7 @@
 	
 	function calculateATR(data: Candle[], period = 14) {
 		if (data.length < period + 1) return [];
-		const atr: { time: number; value: number }[] = [];
+		const atr: { time: Time; value: number }[] = [];
 		let trSum = 0;
 		
 		for (let i = 1; i <= period; i++) {
@@ -148,6 +148,9 @@
 	}
 	
 	onMount(() => {
+		// Connect to Binance WebSocket
+		binanceWS.connect();
+		
 		// RSI Chart
 		rsiChart = createMiniChart(rsiContainer);
 		rsiSeries = rsiChart.addLineSeries({

@@ -8,6 +8,7 @@ python-dotenv>=1.0.0
 psycopg2-binary>=2.9.9
 chromadb>=0.4.0
 libsql-client>=0.3.0
+libsql-client>=0.3.0
 
 # AI / LangChain
 langgraph>=0.0.50

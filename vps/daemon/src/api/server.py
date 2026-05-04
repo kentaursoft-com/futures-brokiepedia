@@ -1,10 +1,12 @@
-"""FastAPI server for dashboard integration."""
+"""FastAPI server for dashboard integration - Phase 5."""
 import logging
 from datetime import datetime
 from typing import Dict, List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+
+from .middleware import RateLimitMiddleware, LoggingMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,7 @@ daemon_state = {
     'departments': [],
     'positions': [],
     'active_strategy': None,
+    'performance': {},
     'health': {
         'vps': True,
         'binance': False,
@@ -32,11 +35,18 @@ daemon_state = {
     }
 }
 
-app = FastAPI(title="Futures Brokiepedia API", version="0.2.0")
+# References to daemon components (injected at startup)
+daemon_refs = {}
+
+app = FastAPI(title="Futures Brokiepedia API", version="1.0.0")
+
+# Add middleware
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=120)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://futures-brokiepedia.pages.dev", "https://futures.brokiepedia.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -111,11 +121,86 @@ async def get_candles(symbol: str, limit: int = 100):
         "count": 0
     }
 
+# === Phase 5: Analytics Endpoints ===
+
+@app.get("/api/v1/performance")
+async def get_performance():
+    """Get performance analytics."""
+    analytics = daemon_refs.get('analytics')
+    if analytics:
+        return analytics.get_full_report()
+    return daemon_state.get('performance', {})
+
+@app.get("/api/v1/performance/equity-curve")
+async def get_equity_curve(days: int = 30):
+    """Get equity curve data."""
+    execution = daemon_refs.get('execution')
+    if execution and execution.turso:
+        history = await execution.turso.get_equity_curve(days)
+        return {'equity_history': history}
+    return {'equity_history': []}
+
+@app.get("/api/v1/trades")
+async def get_trades(limit: int = 100, paper_only: bool = True):
+    """Get trade history."""
+    execution = daemon_refs.get('execution')
+    if execution:
+        trades = execution.positions.get_trade_history(limit)
+        return {'trades': trades, 'count': len(trades)}
+    return {'trades': [], 'count': 0}
+
+@app.get("/api/v1/trades/stats")
+async def get_trade_stats(days: int = 30):
+    """Get trade statistics."""
+    execution = daemon_refs.get('execution')
+    if execution and execution.turso:
+        stats = await execution.turso.get_performance_stats(days)
+        return stats
+    return {}
+
+@app.post("/api/v1/positions/{position_id}/close")
+async def close_position(position_id: str, reason: str = 'manual'):
+    """Close a specific position."""
+    execution = daemon_refs.get('execution')
+    if execution:
+        trade = await execution.close_position(position_id, reason)
+        if trade:
+            return {'success': True, 'trade': trade}
+    return {'success': False, 'error': 'Position not found or execution not available'}
+
+@app.get("/api/v1/risk/status")
+async def get_risk_status():
+    """Get current risk status."""
+    execution = daemon_refs.get('execution')
+    if execution:
+        positions = execution.positions
+        return {
+            'current_drawdown_pct': round(positions.get_current_drawdown(), 2),
+            'max_drawdown_pct': round(positions.max_drawdown_pct, 2),
+            'daily_pnl': round(positions.daily_pnl, 2),
+            'equity': round(positions.equity, 2),
+            'open_positions': len(positions.positions),
+            'execution_enabled': execution.execution_enabled,
+            'risk_limits': {
+                'max_positions': execution.risk.MAX_CONCURRENT_POSITIONS,
+                'max_risk_per_trade_pct': execution.risk.MAX_RISK_PER_TRADE_PCT,
+                'soft_drawdown_pct': execution.risk.SOFT_DRAWDOWN_PCT,
+                'hard_drawdown_pct': execution.risk.HARD_DRAWDOWN_PCT
+            }
+        }
+    return {}
+
+# === State Management ===
+
 def update_state(key: str, value):
     """Update daemon state (called from main daemon)."""
     daemon_state[key] = value
     if key != 'last_sync':
         daemon_state['last_sync'] = int(datetime.now().timestamp())
+
+def set_daemon_refs(refs: dict):
+    """Set references to daemon components."""
+    daemon_refs.update(refs)
 
 def start_api_server(host: str = "0.0.0.0", port: int = 8080):
     """Start the API server."""

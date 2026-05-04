@@ -40,20 +40,22 @@ docker-compose logs -f daemon
 
 ## Components
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| QuestDB | 8812 | Time-series OHLCV data |
-| ChromaDB | 8000 | Vector memory for agents |
-| Daemon | - | Main trading orchestrator |
+| Service  | Port | Purpose                   |
+| -------- | ---- | ------------------------- |
+| QuestDB  | 8812 | Time-series OHLCV data    |
+| ChromaDB | 8000 | Vector memory for agents  |
+| Daemon   | -    | Main trading orchestrator |
 
 ## Trading Mode
 
 **Default: PAPER TRADING**
+
 - No real money at risk
 - Simulated fills at mid-price
 - Full system testing
 
 To switch to live:
+
 ```bash
 export TRADING_MODE=live
 ```

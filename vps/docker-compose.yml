@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   questdb:
@@ -6,9 +6,9 @@ services:
     container_name: futures-questdb
     restart: unless-stopped
     ports:
-      - "9000:9000"    # REST API
-      - "8812:8812"    # PostgreSQL wire
-      - "9009:9009"    # InfluxDB line protocol
+      - "9000:9000" # REST API
+      - "8812:8812" # PostgreSQL wire
+      - "9009:9009" # InfluxDB line protocol
     volumes:
       - questdb-data:/var/lib/questdb
     environment:

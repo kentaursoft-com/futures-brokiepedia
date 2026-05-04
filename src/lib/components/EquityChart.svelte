@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { createChart, LineSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts';
+	import { createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 	
 	interface EquityPoint {
-		time: number;
+		time: Time;
 		value: number;
 	}
 	
@@ -29,8 +29,8 @@
 			
 			const dd = ((peak - currentEquity) / peak) * 100;
 			
-			equity.push({ time, value: currentEquity });
-			drawdown.push({ time, value: dd });
+			equity.push({ time: time as Time, value: currentEquity });
+			drawdown.push({ time: time as Time, value: dd });
 		}
 		
 		return { equity, drawdown };

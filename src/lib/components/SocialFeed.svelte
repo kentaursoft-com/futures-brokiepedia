@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
+	
 	interface TradeIdea {
 		id: string;
 		author: string;
@@ -32,7 +34,7 @@
 		{
 			id: '2',
 			author: 'TrendHunter',
-			avatar: '📈',
+			avatar: 'graph',
 			symbol: 'ETH-PERP',
 			side: 'short',
 			entry: 2580,
@@ -46,7 +48,7 @@
 		{
 			id: '3',
 			author: 'FundingArb_Pro',
-			avatar: '⚡',
+			avatar: 'bolt',
 			symbol: 'SOL-PERP',
 			side: 'long',
 			entry: 98.5,
@@ -94,7 +96,7 @@
 			<div class="rounded-lg bg-secondary/50 p-4 space-y-3">
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<span class="text-xl">{idea.avatar}</span>
+						<Icon name={idea.avatar} size="1.5rem" class_name="text-muted-foreground" />
 						<div>
 							<p class="text-sm font-medium">{idea.author}</p>
 							<p class="text-xs text-muted-foreground">{formatTime(idea.timestamp)}</p>
@@ -135,13 +137,14 @@
 						on:click={() => toggleLike(idea.id)}
 						class="flex items-center gap-1 text-sm {idea.liked ? 'text-pink-400' : 'text-muted-foreground hover:text-pink-400'} transition-colors"
 					>
-						{idea.liked ? '❤️' : '🤍'} {idea.likes}
+						<Icon name={idea.liked ? 'heart-fill' : 'heart'} size="1rem" class_name={idea.liked ? 'text-pink-400' : ''} />
+				{idea.likes}
 					</button>
 					<button class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-						💾 Save
+						<Icon name="save" size="0.875rem" /> Save
 					</button>
 					<button class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-						📋 Copy Setup
+						<Icon name="clipboard" size="0.875rem" /> Copy Setup
 					</button>
 				</div>
 			</div>
@@ -149,6 +152,7 @@
 	</div>
 	
 	<p class="mt-4 text-xs text-muted-foreground text-center">
-		⚠️ These are agent-generated ideas. Always verify with your own analysis.
+		<Icon name="warning" size="0.875rem" class_name="text-amber-400" />
+		These are agent-generated ideas. Always verify with your own analysis.
 	</p>
 </div>

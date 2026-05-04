@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { binanceWS } from '../websocket';
 	
 	interface OrderLevel {
 		price: number;
@@ -12,10 +13,20 @@
 	let spread = 0;
 	let lastPrice = 0;
 	let ws: WebSocket | null = null;
+	let currentBasePrice = 0;
 	
-	// Mock data for demo (will be replaced with real Binance depth WS)
-	function generateMockData() {
-		const basePrice = 43400;
+	// Subscribe to price updates from main WebSocket
+	const unsubscribe = binanceWS.subscribe(state => {
+		if (state.lastPrice > 0) {
+			currentBasePrice = state.lastPrice;
+			lastPrice = state.lastPrice;
+			generateOrderBookData(currentBasePrice);
+		}
+	});
+	
+	function generateOrderBookData(basePrice: number) {
+		if (basePrice <= 0) return;
+		
 		const newBids: OrderLevel[] = [];
 		const newAsks: OrderLevel[] = [];
 		let bidTotal = 0;
@@ -36,30 +47,86 @@
 		bids = newBids;
 		asks = newAsks;
 		spread = asks[0].price - bids[0].price;
-		lastPrice = basePrice;
 	}
 	
-	function connectOrderBook() {
-		// Real implementation would connect to Binance depth stream
-		// wss://fstream.binance.com/ws/btcusdt@depth20@100ms
-		generateMockData();
+	function connectRealOrderBook() {
+		// Connect to Binance depth stream
+		ws = new WebSocket('wss://fstream.binance.com/ws/btcusdt@depth20@100ms');
 		
-		// Update every 2 seconds for demo
-		const interval = setInterval(() => {
-			generateMockData();
-		}, 2000);
+		ws.onopen = () => {
+			console.log('[OrderBook WS] Connected');
+		};
 		
-		return () => clearInterval(interval);
+		ws.onmessage = (event) => {
+			const data = JSON.parse(event.data);
+			
+			if (data.b && data.a) {
+				// Process bids
+				const newBids: OrderLevel[] = [];
+				let bidTotal = 0;
+				data.b.slice(0, 10).forEach(([price, size]: [string, string]) => {
+					const p = parseFloat(price);
+					const s = parseFloat(size);
+					if (s > 0) {
+						bidTotal += s;
+						newBids.push({ price: p, size: s, total: bidTotal });
+					}
+				});
+				
+				// Process asks
+				const newAsks: OrderLevel[] = [];
+				let askTotal = 0;
+				data.a.slice(0, 10).forEach(([price, size]: [string, string]) => {
+					const p = parseFloat(price);
+					const s = parseFloat(size);
+					if (s > 0) {
+						askTotal += s;
+						newAsks.push({ price: p, size: s, total: askTotal });
+					}
+				});
+				
+				if (newBids.length > 0 && newAsks.length > 0) {
+					bids = newBids;
+					asks = newAsks;
+					spread = newAsks[0].price - newBids[0].price;
+					lastPrice = (newAsks[0].price + newBids[0].price) / 2;
+				}
+			}
+		};
+		
+		ws.onclose = () => {
+			console.log('[OrderBook WS] Disconnected, reconnecting...');
+			setTimeout(connectRealOrderBook, 3000);
+		};
+		
+		ws.onerror = (err) => {
+			console.error('[OrderBook WS] Error:', err);
+			ws?.close();
+		};
 	}
 	
 	let cleanup: () => void;
 	
 	onMount(() => {
-		cleanup = connectOrderBook();
+		// Try real WebSocket first, fallback to generated data
+		connectRealOrderBook();
+		
+		// Fallback: update generated data every 2 seconds if real WS fails
+		const interval = setInterval(() => {
+			if (bids.length === 0 && currentBasePrice > 0) {
+				generateOrderBookData(currentBasePrice);
+			}
+		}, 2000);
+		
+		cleanup = () => {
+			clearInterval(interval);
+			ws?.close();
+		};
 	});
 	
 	onDestroy(() => {
 		cleanup?.();
+		unsubscribe();
 	});
 	
 	function getMaxTotal(levels: OrderLevel[]) {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { createChart, CandlestickSeries, LineSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts';
+	import { createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 	import { binanceWS } from '../websocket';
 	
 	export let activeTimeframe = '1m';
@@ -76,7 +76,7 @@
 			const data = await res.json();
 			
 			const candles = data.map((d: any[]) => ({
-				time: Math.floor(d[0] / 1000),
+				time: Math.floor(d[0] / 1000) as Time,
 				open: parseFloat(d[1]),
 				high: parseFloat(d[2]),
 				low: parseFloat(d[3]),
@@ -92,9 +92,9 @@
 		}
 	}
 	
-	function calculateEMA(data: { time: number; value: number }[], period: number) {
+	function calculateEMA(data: { time: Time; value: number }[], period: number) {
 		const k = 2 / (period + 1);
-		const ema: { time: number; value: number }[] = [];
+		const ema: { time: Time; value: number }[] = [];
 		let prevEma = data[0]?.value || 0;
 		
 		for (let i = 0; i < data.length; i++) {
