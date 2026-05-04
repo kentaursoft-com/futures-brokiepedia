@@ -244,6 +244,7 @@ async function buildEvalResponse(env: Env): Promise<any> {
   if (env.TELEGRAM_BOT_TOKEN) secretsConfigured.push("TELEGRAM_BOT_TOKEN");
   if (env.BINANCE_API_KEY) secretsConfigured.push("BINANCE_API_KEY");
   if (env.BINANCE_SECRET_KEY) secretsConfigured.push("BINANCE_SECRET_KEY");
+  if (env.TURSO_DB_URL) secretsConfigured.push("TURSO_DB_URL");
   if (env.TURSO_DB_TOKEN) secretsConfigured.push("TURSO_DB_TOKEN");
   if (env.VPS_URL) secretsConfigured.push("VPS_URL");
   if (env.VPS_INTERNAL_KEY) secretsConfigured.push("VPS_INTERNAL_KEY");
