@@ -7,6 +7,15 @@
 
 @layer base {
   :root {
+    /* Theme variables - controlled by theme store */
+    --accent-primary: #3B82F6;
+    --accent-rgb: 59, 130, 246;
+    --glass-opacity: 0.03;
+    --border-opacity: 0.1;
+    --font-scale: 1;
+    --bg-dimmer: 0.7;
+
+    /* Default dark theme */
     --background: 222 47% 11%;
     --foreground: 213 31% 91%;
     --card: 222 47% 11%;
@@ -28,6 +37,29 @@
     --ring: 224 76% 48%;
     --radius: 0.75rem;
   }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 72.22% 50.59%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --navy-bg: #f1f5f9;
+  }
 }
 
 @layer base {
@@ -36,12 +68,7 @@
   }
   html {
     scroll-behavior: smooth;
-    font-size: 16px;
-  }
-  @media (max-width: 640px) {
-    html {
-      font-size: 16px;
-    }
+    font-size: calc(16px * var(--font-scale, 1));
   }
   body {
     @apply bg-navy text-foreground antialiased;
@@ -52,20 +79,57 @@
     min-height: 100dvh;
     overflow-x: hidden;
   }
+
+  /* Background image mode */
+  body.bg-image-mode {
+    background-image: var(--bg-image);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+  }
+  body.bg-image-mode::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, var(--bg-dimmer, 0.7));
+    z-index: -1;
+    pointer-events: none;
+  }
 }
 
 @layer utilities {
-  /* Glassmorphism utilities */
+  /* Glassmorphism utilities with CSS variables */
   .glass {
-    @apply bg-white/[0.03] backdrop-blur-glass border border-white/10;
+    background: rgba(255, 255, 255, var(--glass-opacity, 0.03));
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, var(--border-opacity, 0.1));
   }
   .glass-hover {
-    @apply hover:bg-white/[0.05] hover:border-white/20 transition-all duration-300;
+    transition: all 0.3s ease;
+  }
+  .glass-hover:hover {
+    background: rgba(255, 255, 255, calc(var(--glass-opacity, 0.03) + 0.02));
+    border-color: rgba(255, 255, 255, calc(var(--border-opacity, 0.1) + 0.05));
   }
   .glass-card {
     @apply glass glass-hover rounded-2xl;
   }
-  
+
+  /* Dynamic accent utilities */
+  .bg-accent-primary {
+    background-color: var(--accent-primary);
+  }
+  .text-accent-primary {
+    color: var(--accent-primary);
+  }
+  .border-accent-primary {
+    border-color: var(--accent-primary);
+  }
+  .shadow-accent {
+    box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.3);
+  }
+
   /* Text gradient utilities */
   .text-gradient-emerald {
     @apply bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent;
@@ -76,7 +140,7 @@
   .text-gradient-amber {
     @apply bg-gradient-to-r from-amber-400 to-amber-300 bg-clip-text text-transparent;
   }
-  
+
   /* Glow utilities */
   .glow-emerald {
     box-shadow: 0 0 20px rgba(16, 185, 129, 0.3), 0 0 40px rgba(16, 185, 129, 0.1);
@@ -89,7 +153,7 @@
   }
 }
 
-/* Custom scrollbar for webkit browsers */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -109,4 +173,34 @@
 ::selection {
   background: rgba(59, 130, 246, 0.3);
   color: white;
+}
+
+/* Range input global styles */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-primary, #3B82F6);
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--accent-primary, #3B82F6)60;
+  border: 2px solid white;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-primary, #3B82F6);
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--accent-primary, #3B82F6)60;
+  border: 2px solid white;
 }

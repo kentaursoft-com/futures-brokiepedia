@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { liveState, startPolling } from '$lib/api';
+  import { theme } from '$lib/stores/theme';
   import { onMount } from 'svelte';
   import BottomNav from '$lib/components/BottomNav.svelte';
   
@@ -72,12 +73,12 @@
   $: currentPath = $page.url.pathname;
 </script>
 
-<div class="min-h-screen bg-navy text-white flex font-sans">
+<div class="min-h-screen bg-navy text-white flex font-sans" style="font-size: calc(1rem * var(--font-scale, 1));">
   <!-- Desktop Sidebar - Icon Only, Expands on Hover -->
-  <aside class="hidden sm:flex flex-col fixed left-0 top-0 h-screen z-40 w-[72px] hover:w-56 group transition-all duration-300 ease-out bg-navy/90 backdrop-blur-glass border-r border-white/[0.06] flex-shrink-0">
+  <aside class="hidden sm:flex flex-col fixed left-0 top-0 h-screen z-40 w-[72px] hover:w-56 group transition-all duration-300 ease-out glass border-r-0 border-r border-white/[0.06]" style="border-right: 1px solid rgba(255, 255, 255, var(--border-opacity, 0.1));">
     <!-- Logo -->
     <div class="h-16 flex items-center px-5 border-b border-white/[0.06] overflow-hidden">
-      <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
+      <div class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary)dd); box-shadow: 0 0 15px var(--accent-primary)40;">
         <span class="text-white font-bold text-sm font-mono">FB</span>
       </div>
       <span class="ml-3 font-bold text-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-white/90">Futures</span>
@@ -88,13 +89,14 @@
       {#each navItems as item}
         {@const isActive = currentPath === item.path}
         <button
-          class="w-full flex items-center px-3 py-3 rounded-xl transition-all duration-200 relative overflow-hidden {isActive ? 'text-emerald-400' : 'text-white/40 hover:text-white/80 hover:bg-white/[0.04]'}"
+          class="w-full flex items-center px-3 py-3 rounded-xl transition-all duration-200 relative overflow-hidden {isActive ? 'text-white' : 'text-white/40 hover:text-white/80'}"
+          style={isActive ? `background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.15), transparent);` : ''}
           on:click={() => navigateTo(item.path)}
         >
           {#if isActive}
-            <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+            <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full shadow-[0_0_8px]" style="background: var(--accent-primary); box-shadow: 0 0 8px var(--accent-primary);"></div>
           {/if}
-          <svg class="w-5 h-5 flex-shrink-0 {isActive ? 'drop-shadow-[0_0_4px_rgba(16,185,129,0.5)]' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width={isActive ? 2.5 : 1.5}>
+          <svg class="w-5 h-5 flex-shrink-0 transition-all duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width={isActive ? 2.5 : 1.5} style={isActive ? `filter: drop-shadow(0 0 4px var(--accent-primary));` : ''}>
             {#if item.icon === 'dashboard'}
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
             {:else if item.icon === 'chart'}
@@ -118,7 +120,7 @@
     <div class="p-4 border-t border-white/[0.06] overflow-hidden">
       <div class="flex items-center gap-3">
         <div 
-          class="w-2.5 h-2.5 rounded-full flex-shrink-0 {daemonConnected ? 'animate-glow-emerald' : ''}"
+          class="w-2.5 h-2.5 rounded-full flex-shrink-0 {daemonConnected ? 'animate-pulse' : ''}"
           style="background: {daemonConnected ? '#10B981' : '#64748B'}; box-shadow: 0 0 8px {daemonConnected ? 'rgba(16,185,129,0.6)' : 'transparent'};"
         ></div>
         <div class="whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -132,10 +134,10 @@
   <!-- Main Content Area -->
   <div class="flex-1 flex flex-col min-h-screen sm:ml-[72px] w-full">
     <!-- Top Header - Glassmorphic -->
-    <header class="h-14 sm:h-16 sticky top-0 z-30 bg-navy/70 backdrop-blur-glass border-b border-white/[0.06] flex items-center px-4 sm:px-6">
+    <header class="h-14 sm:h-16 sticky top-0 z-30 glass border-b-0 flex items-center px-4 sm:px-6" style="border-bottom: 1px solid rgba(255, 255, 255, var(--border-opacity, 0.1));">
       <!-- Mobile Brand -->
       <div class="sm:hidden flex items-center gap-3 mr-4">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
+        <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary)dd); box-shadow: 0 0 15px var(--accent-primary)40;">
           <span class="text-white font-bold text-sm font-mono">FB</span>
         </div>
       </div>
@@ -168,13 +170,14 @@
         <!-- User Menu -->
         <div class="relative">
           <button 
-            class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-400/20 border border-white/10 flex items-center justify-center hover:border-white/20 transition-colors"
+            class="w-8 h-8 rounded-xl flex items-center justify-center hover:opacity-90 transition-all border"
+            style="background: linear-gradient(135deg, var(--accent-primary)20, var(--accent-primary)10); border-color: var(--accent-primary)30;"
             on:click={() => userMenuOpen = !userMenuOpen}
           >
-            <span class="text-xs font-bold text-blue-400 font-mono">K</span>
+            <span class="text-xs font-bold font-mono" style="color: var(--accent-primary);">K</span>
           </button>
           {#if userMenuOpen}
-            <div class="absolute right-0 mt-2 w-48 bg-navy/95 backdrop-blur-glass border border-white/10 rounded-2xl shadow-2xl z-50 py-1 overflow-hidden">
+            <div class="absolute right-0 mt-2 w-48 glass rounded-2xl shadow-2xl z-50 py-1 overflow-hidden">
               <div class="px-4 py-3 border-b border-white/[0.06]">
                 <p class="text-sm font-semibold text-white/90">Kentaur</p>
                 <p class="text-xs text-white/40 font-mono">Admin</p>
@@ -216,19 +219,5 @@
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
-  }
-  
-  :global(.bg-navy) {
-    background-color: #0F172A;
-  }
-  :global(.bg-background) {
-    background-color: #0F172A;
-  }
-  :global(.text-foreground) {
-    color: #e2e8f0;
-  }
-  :global(.backdrop-blur-glass) {
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
   }
 </style>
