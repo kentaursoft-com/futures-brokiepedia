@@ -1,7 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = ['/auth', '/health', '/api/v1/health', '/eval.html'];
+const PUBLIC_ROUTES = ['/auth', '/health', '/api/v1/health', '/eval', '/eval.html'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const { url, cookies } = event;
