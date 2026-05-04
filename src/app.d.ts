@@ -5,9 +5,10 @@ declare global {
     // interface Error {}
     interface Locals {
       user?: {
-        user: string;
+        username: string;
+        role: string;
+        authMethod: string;
         exp: number;
-        iat: number;
       };
     }
     // interface PageData {}
