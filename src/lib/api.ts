@@ -93,6 +93,47 @@ class ApiClient {
     }>;
   }
 
+  // Paper Trading API
+  async getPaperTradingPrices(): Promise<{ prices: Record<string, { price: number; change24h: number }>; timestamp: number }> {
+    return this.fetch("/api/v1/paper-trading/prices") as Promise<any>;
+  }
+
+  async getPaperBalance(): Promise<{
+    balance: number;
+    initial_balance: number;
+    total_pnl: number;
+    unrealized_pnl: number;
+    open_positions: number;
+    total_trades: number;
+    winning_trades: number;
+    win_rate: number;
+    timestamp: number;
+  }> {
+    return this.fetch("/api/v1/paper-trading/balance") as Promise<any>;
+  }
+
+  async getPaperPositions(): Promise<{ positions: any[]; count: number }> {
+    return this.fetch("/api/v1/paper-trading/positions") as Promise<any>;
+  }
+
+  async executePaperTrade(symbol: string, side: string, size: number, leverage?: number): Promise<any> {
+    return this.fetch("/api/v1/paper-trading/execute", {
+      method: "POST",
+      body: JSON.stringify({ symbol, side, size, leverage: leverage || 1.0 }),
+    }) as Promise<any>;
+  }
+
+  async closePaperTrade(tradeId: string, exitPrice: number): Promise<any> {
+    return this.fetch(`/api/v1/paper-trading/close/${tradeId}`, {
+      method: "POST",
+      body: JSON.stringify({ exit_price: exitPrice }),
+    }) as Promise<any>;
+  }
+
+  async getPaperTradeHistory(): Promise<{ trades: any[]; count: number }> {
+    return this.fetch("/api/v1/paper-trading/history") as Promise<any>;
+  }
+
   isAuthenticated(): boolean {
     return !!this.token;
   }

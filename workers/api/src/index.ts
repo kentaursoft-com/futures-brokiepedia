@@ -38,6 +38,10 @@ const PUBLIC_ENDPOINTS = [
   "/api/v1/auth/login",
   "/api/v1/telegram/webhook",
   "/api/v1/prices",
+  "/api/v1/paper-trading/prices",
+  "/api/v1/paper-trading/balance",
+  "/api/v1/paper-trading/positions",
+  "/api/v1/paper-trading/history",
 ];
 
 function isPublicEndpoint(path: string): boolean {
@@ -691,6 +695,152 @@ export default {
           positions: state.positions || [],
           count: (state.positions || []).length,
         });
+      }
+
+      // Paper Trading endpoints
+      if (path === "/api/v1/paper-trading/prices") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/paper-trading/prices`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
+        } catch (e) {
+          console.error("Paper trading prices error:", e);
+        }
+        return jsonResponse({ prices: {}, timestamp: Date.now() });
+      }
+
+      if (path === "/api/v1/paper-trading/balance") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/paper-trading/balance`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
+        } catch (e) {
+          console.error("Paper trading balance error:", e);
+        }
+        return jsonResponse({
+          balance: 10000,
+          initial_balance: 10000,
+          total_pnl: 0,
+          unrealized_pnl: 0,
+          open_positions: 0,
+          total_trades: 0,
+          winning_trades: 0,
+          win_rate: 0,
+          timestamp: Date.now()
+        });
+      }
+
+      if (path === "/api/v1/paper-trading/positions") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/paper-trading/positions`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
+        } catch (e) {
+          console.error("Paper trading positions error:", e);
+        }
+        return jsonResponse({ positions: [], count: 0 });
+      }
+
+      if (path === "/api/v1/paper-trading/history") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/paper-trading/history`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
+        } catch (e) {
+          console.error("Paper trading history error:", e);
+        }
+        return jsonResponse({ trades: [], count: 0 });
+      }
+
+      if (path === "/api/v1/paper-trading/execute" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/paper-trading/execute`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+            body: JSON.stringify(body),
+          });
+          if (res.ok) {
+            const result = await res.json();
+            // Log to audit
+            ctx.waitUntil(
+              env.AUDIT_DB.prepare(
+                `INSERT INTO audit_log (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)`,
+              )
+                .bind(
+                  crypto.randomUUID(),
+                  "paper_trade_executed",
+                  JSON.stringify(result),
+                  Date.now(),
+                )
+                .run()
+                .catch(() => {}),
+            );
+            return jsonResponse(result);
+          }
+          return jsonResponse({ error: "Failed to execute trade" }, 500);
+        } catch (e) {
+          console.error("Paper trading execute error:", e);
+          return jsonResponse({ error: "Failed to execute trade" }, 500);
+        }
+      }
+
+      if (path.startsWith("/api/v1/paper-trading/close/") && request.method === "POST") {
+        try {
+          const tradeId = path.replace("/api/v1/paper-trading/close/", "");
+          const body = await request.json();
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/paper-trading/close/${tradeId}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+            body: JSON.stringify(body),
+          });
+          if (res.ok) {
+            const result = await res.json();
+            // Log to audit
+            ctx.waitUntil(
+              env.AUDIT_DB.prepare(
+                `INSERT INTO audit_log (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)`,
+              )
+                .bind(
+                  crypto.randomUUID(),
+                  "paper_trade_closed",
+                  JSON.stringify(result),
+                  Date.now(),
+                )
+                .run()
+                .catch(() => {}),
+            );
+            return jsonResponse(result);
+          }
+          return jsonResponse({ error: "Failed to close trade" }, 500);
+        } catch (e) {
+          console.error("Paper trading close error:", e);
+          return jsonResponse({ error: "Failed to close trade" }, 500);
+        }
       }
 
       // Signals endpoint - generates signals based on departments state
