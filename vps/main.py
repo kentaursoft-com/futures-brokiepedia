@@ -183,7 +183,7 @@ async def lifespan(app: FastAPI):
     # Start AI agent orchestrator
     if AGENTS_AVAILABLE:
         try:
-            asyncio.create_task(agent_orchestrator.run_loop(interval=60))
+            asyncio.create_task(agent_orchestrator.run_loop(interval=300))
             print("[daemon] AI agent orchestrator started")
         except Exception as e:
             print(f"[daemon] Agent orchestrator start warning: {e}")

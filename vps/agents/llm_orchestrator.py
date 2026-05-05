@@ -216,7 +216,7 @@ class LLMOrchestrator:
         except Exception as e:
             print(f"[llm-agents] QuestDB usage write error: {e}")
     
-    async def run_loop(self, interval: int = 60):
+    async def run_loop(self, interval: int = 300):
         """Run LLM agent analysis loop."""
         self.running = True
         print(f"[llm-agents] LLM Orchestrator started (interval: {interval}s)")

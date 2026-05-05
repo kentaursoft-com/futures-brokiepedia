@@ -126,7 +126,7 @@ class AgentOrchestrator:
                     if resp.status != 429:
                         print(f"[agents] KV write failed for {key}: {resp.status}")
     
-    async def run_loop(self, interval: int = 60):
+    async def run_loop(self, interval: int = 300):
         """Run agent analysis loop."""
         self.running = True
         print(f"[agents] Orchestrator started (interval: {interval}s)")

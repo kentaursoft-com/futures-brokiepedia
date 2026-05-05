@@ -362,7 +362,7 @@ Return JSON with direction, confidence, and detailed reasoning."""
         except Exception as e:
             print(f"[hybrid] QuestDB usage write error: {e}")
 
-    async def run_loop(self, interval: int = 60):
+    async def run_loop(self, interval: int = 300):
         """Run hybrid analysis loop."""
         self.running = True
         print(f"[hybrid] Hybrid Orchestrator started (interval: {interval}s)")
