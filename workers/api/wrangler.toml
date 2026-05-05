@@ -26,7 +26,7 @@ database_id = "c7d20ca7-b8c5-4b35-8446-e7e4146425bb"
 
 # Environment Variables (non-sensitive)
 [vars]
-# UPDATE THIS WITH YOUR VPS IP
+ENVIRONMENT = "production"
 DAEMON_URL = "https://daemon.brokiepedia.com"
 
 # Secrets (set via wrangler secret put <NAME>)
