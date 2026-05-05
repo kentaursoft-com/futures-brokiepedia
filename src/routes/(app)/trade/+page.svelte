@@ -39,9 +39,9 @@
         <div>
           <p class="text-sm text-white/40 font-sans">BTC-PERP</p>
           <div class="flex items-center gap-2">
-            <span class="text-xl sm:text-2xl font-bold font-mono text-white/90">${$binanceWS.lastPrice?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '78,623.25'}</span>
+            <span class="text-xl sm:text-2xl font-bold font-mono text-white/90">${$binanceWS.lastPrice?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '—'}</span>
             <span class="text-sm font-mono {$binanceWS.ticker?.change24hPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-              {$binanceWS.ticker?.change24hPct >= 0 ? '+' : ''}{$binanceWS.ticker?.change24hPct?.toFixed(2) || '+1.24'}%
+              {$binanceWS.ticker?.change24hPct >= 0 ? '+' : ''}{$binanceWS.ticker?.change24hPct?.toFixed(2) || '—'}%
             </span>
           </div>
         </div>

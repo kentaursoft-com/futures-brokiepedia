@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Icon from './Icon.svelte';
+	import { api } from '$lib/api';
+	import { binanceWS } from '$lib/websocket';
 	
 	interface OrderParams {
 		symbol: string;
@@ -18,28 +21,74 @@
 		side: 'long',
 		type: 'market',
 		size: 0.1,
-		price: 43400,
-		stopPrice: 43000,
+		price: undefined,
+		stopPrice: undefined,
 		trailingPercent: 2,
-		takeProfit: 45000,
-		stopLoss: 42000
+		takeProfit: undefined,
+		stopLoss: undefined
 	};
 	
-	let showPreview = false;
+	let submitting = false;
+	let result: { success?: boolean; message?: string; trade?: any } | null = null;
+	let error: string | null = null;
 	
-	$: estimatedPnl = order.takeProfit && order.stopLoss 
+	// Get current price from WebSocket
+	$: currentPrice = $binanceWS.lastPrice;
+	$: symbolMap: Record<string, string> = {
+		'BTC-PERP': 'BTCUSDT',
+		'ETH-PERP': 'ETHUSDT',
+		'SOL-PERP': 'SOLUSDT'
+	};
+	
+	// Update default price when symbol changes or price updates
+	$: {
+		const mappedSymbol = symbolMap[order.symbol];
+		if (mappedSymbol && $binanceWS.prices[mappedSymbol]) {
+			order.price = $binanceWS.prices[mappedSymbol];
+		}
+	}
+	
+	$: estimatedPnl = order.takeProfit && order.stopLoss && order.price
 		? {
 				profit: order.side === 'long' 
-					? (order.takeProfit - (order.price || 43400)) * order.size
-					: ((order.price || 43400) - order.takeProfit) * order.size,
+					? (order.takeProfit - order.price) * order.size
+					: (order.price - order.takeProfit) * order.size,
 				loss: order.side === 'long'
-					? (order.stopLoss - (order.price || 43400)) * order.size
-					: ((order.price || 43400) - order.stopLoss) * order.size
+					? (order.stopLoss - order.price) * order.size
+					: (order.price - order.stopLoss) * order.size
 			}
 		: null;
 	
-	function submitOrder() {
-		alert(`Order submitted:\n${order.side.toUpperCase()} ${order.size} ${order.symbol}\nType: ${order.type}`);
+	async function submitOrder() {
+		if (!order.price) {
+			error = 'Price not available. Please wait for market data.';
+			return;
+		}
+		
+		try {
+			submitting = true;
+			error = null;
+			result = null;
+			
+			const response = await api.executePaperTrade(
+				order.symbol,
+				order.side,
+				order.size,
+				1.0 // leverage
+			);
+			
+			result = response;
+			
+			if (response.success) {
+				// Reset form slightly
+				order.size = 0.1;
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to submit order';
+			console.error('Order error:', err);
+		} finally {
+			submitting = false;
+		}
 	}
 </script>
 
@@ -78,6 +127,12 @@
 			<option value="stop_limit">Stop Limit</option>
 			<option value="trailing_stop">Trailing Stop</option>
 		</select>
+		
+		<!-- Current Price Display -->
+		<div class="flex items-center justify-between py-2 px-3 rounded bg-secondary/50">
+			<span class="text-xs text-muted-foreground">Current Price</span>
+			<span class="text-sm font-mono font-semibold">${order.price?.toLocaleString() || '—'}</span>
+		</div>
 		
 		<!-- Size -->
 		<div class="flex gap-2">
@@ -161,19 +216,40 @@
 			</div>
 		{/if}
 		
+		<!-- Result / Error -->
+		{#if result}
+			<div class="rounded bg-emerald-500/10 border border-emerald-500/20 p-3 text-sm">
+				<p class="text-emerald-400">{result.message || 'Order submitted successfully'}</p>
+				{#if result.trade}
+					<p class="text-xs text-muted-foreground mt-1">ID: {result.trade.id}</p>
+				{/if}
+			</div>
+		{/if}
+		
+		{#if error}
+			<div class="rounded bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+				{error}
+			</div>
+		{/if}
+		
 		<!-- Submit -->
 		<button 
 			on:click={submitOrder}
-			class="w-full rounded-md {order.side === 'long' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'} px-4 py-3 text-sm font-medium text-white transition-colors"
+			disabled={submitting}
+			class="w-full rounded-md {order.side === 'long' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'} px-4 py-3 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 		>
-			{#if order.side === 'long'}
-			<Icon name="arrow-up" size="1rem" color="white" />
-			Buy
-		{:else}
-			<Icon name="arrow-down" size="1rem" color="white" />
-			Sell
-		{/if}
-		{order.symbol}
+			{#if submitting}
+				<span class="animate-spin inline-block mr-2">⟳</span> Submitting...
+			{:else}
+				{#if order.side === 'long'}
+					<Icon name="arrow-up" size="1rem" color="white" />
+					Buy
+				{:else}
+					<Icon name="arrow-down" size="1rem" color="white" />
+					Sell
+				{/if}
+				{order.symbol}
+			{/if}
 		</button>
 	</div>
 </div>

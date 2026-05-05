@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { api } from '$lib/api';
 	
 	// Dynamic imports for browser-only components
 	let EquityChart: any;
@@ -13,41 +14,24 @@
 			const portfolioModule = await import('$lib/components/PortfolioAnalytics.svelte');
 			PortfolioAnalytics = portfolioModule.default;
 		}
+		loadAnalytics();
 	});
 	
-	const performanceStats = {
-		totalReturn: 24.5,
-		sharpeRatio: 1.85,
-		maxDrawdown: -8.2,
-		winRate: 68.5,
-		profitFactor: 1.72,
-		avgTrade: 125.50,
-		avgWin: 450.00,
-		avgLoss: -180.00,
-		bestTrade: 1250.00,
-		worstTrade: -520.00,
-		totalTrades: 127,
-		winningTrades: 87,
-		losingTrades: 40,
-	};
+	let analytics: any = null;
+	let loading = true;
+	let error: string | null = null;
 	
-	const monthlyReturns = [
-		{ month: 'Jan', return: 5.2 },
-		{ month: 'Feb', return: -2.1 },
-		{ month: 'Mar', return: 8.5 },
-		{ month: 'Apr', return: 3.2 },
-		{ month: 'May', return: -1.5 },
-		{ month: 'Jun', return: 6.8 },
-		{ month: 'Jul', return: 4.2 },
-	];
-	
-	const tradeDistribution = [
-		{ range: '0-50', count: 23 },
-		{ range: '50-100', count: 31 },
-		{ range: '100-200', count: 28 },
-		{ range: '200-500', count: 18 },
-		{ range: '500+', count: 7 },
-	];
+	async function loadAnalytics() {
+		try {
+			loading = true;
+			analytics = await api.getAnalytics();
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to load analytics';
+			console.error('Analytics load error:', err);
+		} finally {
+			loading = false;
+		}
+	}
 	
 	let activeTab = 'overview';
 	const tabs = [
@@ -68,156 +52,177 @@
 		<p class="text-muted-foreground text-sm mt-1">Track your trading performance and statistics</p>
 	</div>
 	
-	<!-- Key Metrics -->
-	<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-		<div class="bg-card border border-border rounded-xl p-5">
-			<p class="text-muted-foreground text-sm">Total Return</p>
-			<p class="text-2xl font-bold mt-1 text-green-400">+{performanceStats.totalReturn}%</p>
+	{#if loading}
+		<div class="flex items-center justify-center h-64">
+			<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
 		</div>
-		<div class="bg-card border border-border rounded-xl p-5">
-			<p class="text-muted-foreground text-sm">Sharpe Ratio</p>
-			<p class="text-2xl font-bold mt-1">{performanceStats.sharpeRatio}</p>
+	{:else if error}
+		<div class="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
+			<p class="text-red-400">{error}</p>
+			<button class="mt-4 px-4 py-2 bg-primary rounded-lg text-sm" on:click={loadAnalytics}>Retry</button>
 		</div>
-		<div class="bg-card border border-border rounded-xl p-5">
-			<p class="text-muted-foreground text-sm">Max Drawdown</p>
-			<p class="text-2xl font-bold mt-1 text-red-400">{performanceStats.maxDrawdown}%</p>
-		</div>
-		<div class="bg-card border border-border rounded-xl p-5">
-			<p class="text-muted-foreground text-sm">Win Rate</p>
-			<p class="text-2xl font-bold mt-1">{performanceStats.winRate}%</p>
-		</div>
-	</div>
-	
-	<!-- Tabs -->
-	<div class="bg-card border border-border rounded-xl">
-		<div class="flex border-b border-border">
-			{#each tabs as tab}
-				<button
-					class="px-6 py-4 text-sm font-medium transition-colors border-b-2 {activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}"
-					on:click={() => activeTab = tab.id}
-				>
-					{tab.label}
-				</button>
-			{/each}
+	{:else if analytics}
+		<!-- Key Metrics -->
+		<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+			<div class="bg-card border border-border rounded-xl p-5">
+				<p class="text-muted-foreground text-sm">Total Return</p>
+				<p class="text-2xl font-bold mt-1 {analytics.totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}">
+					{analytics.totalReturn >= 0 ? '+' : ''}{analytics.totalReturn}%
+				</p>
+			</div>
+			<div class="bg-card border border-border rounded-xl p-5">
+				<p class="text-muted-foreground text-sm">Sharpe Ratio</p>
+				<p class="text-2xl font-bold mt-1">{analytics.sharpeRatio}</p>
+			</div>
+			<div class="bg-card border border-border rounded-xl p-5">
+				<p class="text-muted-foreground text-sm">Max Drawdown</p>
+				<p class="text-2xl font-bold mt-1 text-red-400">{analytics.maxDrawdown}%</p>
+			</div>
+			<div class="bg-card border border-border rounded-xl p-5">
+				<p class="text-muted-foreground text-sm">Win Rate</p>
+				<p class="text-2xl font-bold mt-1">{analytics.winRate}%</p>
+			</div>
 		</div>
 		
-		<div class="p-6">
-			{#if activeTab === 'overview'}
-				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-					<!-- Equity Curve -->
-					<div class="bg-muted rounded-lg p-5">
-						<h3 class="font-semibold mb-4">Equity Curve</h3>
-						<div class="h-64">
-							{#if EquityChart}
-								<svelte:component this={EquityChart} />
-							{:else}
-								<div class="h-full flex items-center justify-center text-muted-foreground">
-									Loading chart...
-								</div>
-							{/if}
-						</div>
-					</div>
-					
-					<!-- Detailed Stats -->
-					<div class="bg-muted rounded-lg p-5">
-						<h3 class="font-semibold mb-4">Detailed Statistics</h3>
-						<div class="space-y-3">
-							<div class="flex justify-between py-2 border-b border-border/50">
-								<span class="text-muted-foreground">Profit Factor</span>
-								<span class="font-medium">{performanceStats.profitFactor}</span>
-							</div>
-							<div class="flex justify-between py-2 border-b border-border/50">
-								<span class="text-muted-foreground">Average Trade</span>
-								<span class="font-medium ${performanceStats.avgTrade >= 0 ? 'text-green-400' : 'text-red-400'}">
-									{performanceStats.avgTrade >= 0 ? '+' : ''}${performanceStats.avgTrade}
-								</span>
-							</div>
-							<div class="flex justify-between py-2 border-b border-border/50">
-								<span class="text-muted-foreground">Average Win</span>
-								<span class="font-medium text-green-400">+${performanceStats.avgWin}</span>
-							</div>
-							<div class="flex justify-between py-2 border-b border-border/50">
-								<span class="text-muted-foreground">Average Loss</span>
-								<span class="font-medium text-red-400">${performanceStats.avgLoss}</span>
-							</div>
-							<div class="flex justify-between py-2 border-b border-border/50">
-								<span class="text-muted-foreground">Best Trade</span>
-								<span class="font-medium text-green-400">+${performanceStats.bestTrade.toLocaleString()}</span>
-							</div>
-							<div class="flex justify-between py-2">
-								<span class="text-muted-foreground">Worst Trade</span>
-								<span class="font-medium text-red-400">${performanceStats.worstTrade.toLocaleString()}</span>
-							</div>
-						</div>
-					</div>
-				</div>
-				
-			{:else if activeTab === 'trades'}
-				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-					<!-- Win/Loss Distribution -->
-					<div class="bg-muted rounded-lg p-5">
-						<h3 class="font-semibold mb-4">Trade Distribution</h3>
-						<div class="space-y-3">
-							{#each tradeDistribution as item}
-								<div class="flex items-center gap-3">
-									<span class="text-sm w-16">${item.range}</span>
-									<div class="flex-1 h-6 bg-background rounded-full overflow-hidden">
-										<div class="h-full bg-primary rounded-full flex items-center justify-end px-2" style="width: {(item.count / 31) * 100}%">
-											<span class="text-xs">{item.count}</span>
-										</div>
+		<!-- Tabs -->
+		<div class="bg-card border border-border rounded-xl">
+			<div class="flex border-b border-border">
+				{#each tabs as tab}
+					<button
+						class="px-6 py-4 text-sm font-medium transition-colors border-b-2 {activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+						on:click={() => activeTab = tab.id}
+					>
+						{tab.label}
+					</button>
+				{/each}
+			</div>
+			
+			<div class="p-6">
+				{#if activeTab === 'overview'}
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+						<!-- Equity Curve -->
+						<div class="bg-muted rounded-lg p-5">
+							<h3 class="font-semibold mb-4">Equity Curve</h3>
+							<div class="h-64">
+								{#if EquityChart}
+									<svelte:component this={EquityChart} data={analytics.equityHistory} />
+								{:else}
+									<div class="h-full flex items-center justify-center text-muted-foreground">
+										Loading chart...
 									</div>
+								{/if}
+							</div>
+						</div>
+						
+						<!-- Detailed Stats -->
+						<div class="bg-muted rounded-lg p-5">
+							<h3 class="font-semibold mb-4">Detailed Statistics</h3>
+							<div class="space-y-3">
+								<div class="flex justify-between py-2 border-b border-border/50">
+									<span class="text-muted-foreground">Profit Factor</span>
+									<span class="font-medium">{analytics.profitFactor}</span>
 								</div>
-							{/each}
+								<div class="flex justify-between py-2 border-b border-border/50">
+									<span class="text-muted-foreground">Average Trade</span>
+									<span class="font-medium {analytics.avgTrade >= 0 ? 'text-green-400' : 'text-red-400'}">
+										{analytics.avgTrade >= 0 ? '+' : ''}${analytics.avgTrade}
+									</span>
+								</div>
+								<div class="flex justify-between py-2 border-b border-border/50">
+									<span class="text-muted-foreground">Average Win</span>
+									<span class="font-medium text-green-400">+${analytics.avgWin}</span>
+								</div>
+								<div class="flex justify-between py-2 border-b border-border/50">
+									<span class="text-muted-foreground">Average Loss</span>
+									<span class="font-medium text-red-400">${analytics.avgLoss}</span>
+								</div>
+								<div class="flex justify-between py-2 border-b border-border/50">
+									<span class="text-muted-foreground">Best Trade</span>
+									<span class="font-medium text-green-400">+${analytics.bestTrade.toLocaleString()}</span>
+								</div>
+								<div class="flex justify-between py-2">
+									<span class="text-muted-foreground">Worst Trade</span>
+									<span class="font-medium text-red-400">${analytics.worstTrade.toLocaleString()}</span>
+								</div>
+							</div>
 						</div>
 					</div>
 					
-					<!-- Trade Stats -->
-					<div class="bg-muted rounded-lg p-5">
-						<h3 class="font-semibold mb-4">Trade Statistics</h3>
-						<div class="grid grid-cols-2 gap-4">
-							<div class="text-center p-4 bg-background rounded-lg">
-								<p class="text-3xl font-bold">{performanceStats.totalTrades}</p>
-								<p class="text-sm text-muted-foreground mt-1">Total Trades</p>
+				{:else if activeTab === 'trades'}
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+						<!-- Win/Loss Distribution -->
+						<div class="bg-muted rounded-lg p-5">
+							<h3 class="font-semibold mb-4">Trade Distribution</h3>
+							<div class="space-y-3">
+								{#if analytics.tradeDistribution && analytics.tradeDistribution.length > 0}
+									{#each analytics.tradeDistribution as item}
+										<div class="flex items-center gap-3">
+											<span class="text-sm w-16">${item.range}</span>
+											<div class="flex-1 h-6 bg-background rounded-full overflow-hidden">
+												<div class="h-full bg-primary rounded-full flex items-center justify-end px-2" style="width: {(item.count / Math.max(...analytics.tradeDistribution.map((d: any) => d.count))) * 100}%">
+													<span class="text-xs">{item.count}</span>
+												</div>
+											</div>
+										</div>
+									{/each}
+								{:else}
+									<p class="text-muted-foreground text-center py-8">No trade data yet</p>
+								{/if}
 							</div>
-							<div class="text-center p-4 bg-background rounded-lg">
-								<p class="text-3xl font-bold text-green-400">{performanceStats.winningTrades}</p>
-								<p class="text-sm text-muted-foreground mt-1">Winning</p>
-							</div>
-							<div class="text-center p-4 bg-background rounded-lg">
-								<p class="text-3xl font-bold text-red-400">{performanceStats.losingTrades}</p>
-								<p class="text-sm text-muted-foreground mt-1">Losing</p>
-							</div>
-							<div class="text-center p-4 bg-background rounded-lg">
-								<p class="text-3xl font-bold">{performanceStats.winRate}%</p>
-								<p class="text-sm text-muted-foreground mt-1">Win Rate</p>
+						</div>
+						
+						<!-- Trade Stats -->
+						<div class="bg-muted rounded-lg p-5">
+							<h3 class="font-semibold mb-4">Trade Statistics</h3>
+							<div class="grid grid-cols-2 gap-4">
+								<div class="text-center p-4 bg-background rounded-lg">
+									<p class="text-3xl font-bold">{analytics.totalTrades}</p>
+									<p class="text-sm text-muted-foreground mt-1">Total Trades</p>
+								</div>
+								<div class="text-center p-4 bg-background rounded-lg">
+									<p class="text-3xl font-bold text-green-400">{analytics.winningTrades}</p>
+									<p class="text-sm text-muted-foreground mt-1">Winning</p>
+								</div>
+								<div class="text-center p-4 bg-background rounded-lg">
+									<p class="text-3xl font-bold text-red-400">{analytics.losingTrades}</p>
+									<p class="text-sm text-muted-foreground mt-1">Losing</p>
+								</div>
+								<div class="text-center p-4 bg-background rounded-lg">
+									<p class="text-3xl font-bold">{analytics.winRate}%</p>
+									<p class="text-sm text-muted-foreground mt-1">Win Rate</p>
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
-				
-			{:else if activeTab === 'monthly'}
-				<div class="bg-muted rounded-lg p-5">
-					<h3 class="font-semibold mb-4">Monthly Returns</h3>
-					<div class="grid grid-cols-7 gap-2">
-						{#each monthlyReturns as month}
-							<div class="text-center">
-								<div class="h-32 bg-background rounded-lg relative flex items-end justify-center p-2">
-									<div 
-										class="w-full rounded {month.return >= 0 ? 'bg-green-500/50' : 'bg-red-500/50'}"
-										style="height: {Math.abs(month.return) * 5}%"
-									></div>
-								</div>
-								<p class="text-sm mt-2">{month.month}</p>
-								<p class="text-xs {month.return >= 0 ? 'text-green-400' : 'text-red-400'}">
-									{month.return >= 0 ? '+' : ''}{month.return}%
-								</p>
+					
+				{:else if activeTab === 'monthly'}
+					<div class="bg-muted rounded-lg p-5">
+						<h3 class="font-semibold mb-4">Monthly Returns</h3>
+						{#if analytics.monthlyReturns && analytics.monthlyReturns.length > 0}
+							<div class="grid grid-cols-7 gap-2">
+								{#each analytics.monthlyReturns as month}
+									<div class="text-center">
+										<div class="h-32 bg-background rounded-lg relative flex items-end justify-center p-2">
+											<div 
+												class="w-full rounded {month.return >= 0 ? 'bg-green-500/50' : 'bg-red-500/50'}"
+												style="height: {Math.min(Math.abs(month.return) * 10, 100)}%"
+											></div>
+										</div>
+										<p class="text-sm mt-2">{month.month}</p>
+										<p class="text-xs {month.return >= 0 ? 'text-green-400' : 'text-red-400'}">
+											{month.return >= 0 ? '+' : ''}{month.return}%
+										</p>
+									</div>
+								{/each}
 							</div>
-						{/each}
+						{:else}
+							<p class="text-muted-foreground text-center py-8">No monthly data yet</p>
+						{/if}
 					</div>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		</div>
-	</div>
+	{/if}
 </div>
 
 <style>

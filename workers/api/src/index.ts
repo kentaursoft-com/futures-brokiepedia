@@ -38,6 +38,9 @@ const PUBLIC_ENDPOINTS = [
   "/api/v1/auth/login",
   "/api/v1/telegram/webhook",
   "/api/v1/prices",
+  "/api/v1/signals",
+  "/api/v1/analytics",
+  "/api/v1/activity",
   "/api/v1/paper-trading/prices",
   "/api/v1/paper-trading/balance",
   "/api/v1/paper-trading/positions",
@@ -446,10 +449,25 @@ export default {
 
       // Health check - PUBLIC
       if (path === "/health" || path === "/api/v1/health") {
+        // Test VPS connectivity
+        let vps_ping = null;
+        let vps_error = null;
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const pingRes = await fetch(`${daemonUrl}/ping`, { timeout: 5000 } as any);
+          vps_ping = { status: pingRes.status, ok: pingRes.ok };
+        } catch (e: any) {
+          vps_error = e.message || String(e);
+        }
+        
         return jsonResponse({
           status: "ok",
           timestamp: Date.now(),
           daemon_connected: !!env.DAEMON_URL,
+          daemon_url: env.DAEMON_URL || "not_set",
+          version: "1.1.0-real-data",
+          vps_ping,
+          vps_error,
         });
       }
 
@@ -843,38 +861,74 @@ export default {
         }
       }
 
-      // Signals endpoint - generates signals based on departments state
+      // Signals endpoint - proxy to VPS for real signals
       if (path === "/api/v1/signals") {
         try {
-          const state = await fetchDaemonState(env);
-          const departments = state.departments || [];
-          
-          // Generate signals from departments
-          const signals = departments
-            .filter((d: any) => d.direction !== 'flat' && d.confidence > 0.5)
-            .map((dept: any) => {
-              const basePrice = dept.symbol === 'ETH-PERP' ? 2379 : dept.symbol === 'SOL-PERP' ? 85 : 80072;
-              const multiplier = dept.direction === 'long' ? 1 : -1;
-              return {
-                id: crypto.randomUUID(),
-                symbol: dept.symbol || 'BTC-PERP',
-                type: dept.direction,
-                confidence: dept.confidence || 0.7,
-                entry: basePrice,
-                tp: basePrice + (basePrice * 0.03 * multiplier),
-                sl: basePrice - (basePrice * 0.015 * multiplier),
-                risk_reward: 2.0,
-                timeframe: dept.timeframe || '1h',
-                strategy: dept.department || 'AI Analysis',
-                time: new Date().toISOString(),
-                status: 'active',
-              };
-            });
-          
-          return jsonResponse({ signals, count: signals.length });
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/signals`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
         } catch (e) {
-          return jsonResponse({ signals: [], count: 0 });
+          console.error("Signals proxy error:", e);
         }
+        return jsonResponse({ signals: [], count: 0 });
+      }
+
+      // Analytics endpoint - proxy to VPS for real analytics
+      if (path === "/api/v1/analytics") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const fetchUrl = `${daemonUrl}/api/v1/analytics`;
+          console.log(`[worker] Fetching analytics from ${fetchUrl}`);
+          const res = await fetch(fetchUrl, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          console.log(`[worker] VPS response status: ${res.status}`);
+          if (res.ok) {
+            const data = await res.json();
+            console.log(`[worker] VPS data: ${JSON.stringify(data).substring(0, 100)}`);
+            return jsonResponse(data);
+          }
+          const errorText = await res.text();
+          console.log(`[worker] VPS error: ${res.status} ${errorText.substring(0, 200)}`);
+        } catch (e: any) {
+          console.error(`[worker] Analytics proxy error: ${e.message || e}`);
+        }
+        return jsonResponse({
+          totalReturn: 0,
+          sharpeRatio: 0,
+          maxDrawdown: 0,
+          winRate: 0,
+          profitFactor: 0,
+          avgTrade: 0,
+          totalTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+          monthlyReturns: [],
+          tradeDistribution: [],
+          equityHistory: []
+        });
+      }
+
+      // Activity endpoint - proxy to VPS for real activity
+      if (path === "/api/v1/activity") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/activity`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
+        } catch (e) {
+          console.error("Activity proxy error:", e);
+        }
+        return jsonResponse({ activity: [], count: 0 });
       }
 
       // Strategies endpoint

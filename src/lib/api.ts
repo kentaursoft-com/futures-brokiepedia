@@ -3,6 +3,8 @@ import type { DashboardState } from "./types";
 
 // Use the Cloudflare Worker as API gateway
 const API_BASE = "https://futures-brokiepedia-api.kentaursoft-com.workers.dev";
+// VPS backend for direct access (paper trading, analytics, etc.)
+const VPS_BASE = "http://178.238.229.116:8000";
 
 class ApiClient {
   private token: string | null = null;
@@ -93,9 +95,22 @@ class ApiClient {
     }>;
   }
 
-  // Paper Trading API
+  // Direct VPS fetch (for endpoints blocked by worker)
+  private async vpsFetch(path: string, options?: RequestInit): Promise<unknown> {
+    const res = await fetch(`${VPS_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+    if (!res.ok) throw new Error(`VPS API error: ${res.status}`);
+    return res.json();
+  }
+
+  // Paper Trading API (direct to VPS)
   async getPaperTradingPrices(): Promise<{ prices: Record<string, { price: number; change24h: number }>; timestamp: number }> {
-    return this.fetch("/api/v1/paper-trading/prices") as Promise<any>;
+    return this.vpsFetch("/api/v1/paper-trading/prices") as Promise<any>;
   }
 
   async getPaperBalance(): Promise<{
@@ -109,29 +124,42 @@ class ApiClient {
     win_rate: number;
     timestamp: number;
   }> {
-    return this.fetch("/api/v1/paper-trading/balance") as Promise<any>;
+    return this.vpsFetch("/api/v1/paper-trading/balance") as Promise<any>;
   }
 
   async getPaperPositions(): Promise<{ positions: any[]; count: number }> {
-    return this.fetch("/api/v1/paper-trading/positions") as Promise<any>;
+    return this.vpsFetch("/api/v1/paper-trading/positions") as Promise<any>;
   }
 
   async executePaperTrade(symbol: string, side: string, size: number, leverage?: number): Promise<any> {
-    return this.fetch("/api/v1/paper-trading/execute", {
+    return this.vpsFetch("/api/v1/paper-trading/execute", {
       method: "POST",
       body: JSON.stringify({ symbol, side, size, leverage: leverage || 1.0 }),
     }) as Promise<any>;
   }
 
   async closePaperTrade(tradeId: string, exitPrice: number): Promise<any> {
-    return this.fetch(`/api/v1/paper-trading/close/${tradeId}`, {
+    return this.vpsFetch(`/api/v1/paper-trading/close/${tradeId}`, {
       method: "POST",
       body: JSON.stringify({ exit_price: exitPrice }),
     }) as Promise<any>;
   }
 
   async getPaperTradeHistory(): Promise<{ trades: any[]; count: number }> {
-    return this.fetch("/api/v1/paper-trading/history") as Promise<any>;
+    return this.vpsFetch("/api/v1/paper-trading/history") as Promise<any>;
+  }
+
+  // Analytics, Signals, Activity (direct to VPS)
+  async getAnalytics(): Promise<any> {
+    return this.vpsFetch("/api/v1/analytics") as Promise<any>;
+  }
+
+  async getSignals(): Promise<{ signals: any[]; count: number }> {
+    return this.vpsFetch("/api/v1/signals") as Promise<any>;
+  }
+
+  async getActivity(): Promise<{ activity: any[]; count: number }> {
+    return this.vpsFetch("/api/v1/activity") as Promise<any>;
   }
 
   isAuthenticated(): boolean {

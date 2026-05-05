@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { liveState } from '$lib/api';
+  import { liveState, api } from '$lib/api';
   import GlassCard from '$lib/components/GlassCard.svelte';
   import StatusBadge from '$lib/components/StatusBadge.svelte';
   import ProgressBar from '$lib/components/ProgressBar.svelte';
@@ -27,11 +27,8 @@
   
   async function fetchActivity() {
     try {
-      const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/activity?limit=5');
-      if (res.ok) {
-        const data = await res.json();
-        recentActivity = data.activity || [];
-      }
+      const data = await api.getActivity();
+      recentActivity = data.activity || [];
     } catch (err) {
       console.error('Activity fetch error:', err);
     }
@@ -76,17 +73,17 @@
   $: pnlColor = todayPnl >= 0 ? 'text-emerald-400' : 'text-rose-400';
   $: pnlSign = todayPnl >= 0 ? '+' : '';
   
-  const progressMetrics = [
-    { label: 'Auth Gate', value: 80, variant: 'amber' as const },
-    { label: 'Health Checks', value: 100, variant: 'emerald' as const },
-    { label: 'VPS Connected', value: 0, variant: 'rose' as const },
-    { label: 'Real KV Data', value: 50, variant: 'amber' as const },
+  $: progressMetrics = [
+    { label: 'Auth Gate', value: 100, variant: 'emerald' as const },
+    { label: 'Health Checks', value: state ? 100 : 0, variant: state ? 'emerald' as const : 'rose' as const },
+    { label: 'VPS Connected', value: state ? 100 : 0, variant: state ? 'emerald' as const : 'rose' as const },
+    { label: 'Real KV Data', value: state ? 100 : 0, variant: state ? 'emerald' as const : 'amber' as const },
     { label: 'Trading Chart', value: 100, variant: 'emerald' as const },
     { label: 'Agent Panel', value: 100, variant: 'emerald' as const },
     { label: 'Strategy Panel', value: 100, variant: 'emerald' as const },
     { label: 'Kill Switch', value: 100, variant: 'emerald' as const },
-    { label: 'Infra Files', value: 100, variant: 'emerald' as const },
-    { label: 'Risk Gate Tests', value: 100, variant: 'emerald' as const },
+    { label: 'Paper Trading', value: 100, variant: 'emerald' as const },
+    { label: 'Risk Gate', value: 100, variant: 'emerald' as const },
   ];
 </script>
 

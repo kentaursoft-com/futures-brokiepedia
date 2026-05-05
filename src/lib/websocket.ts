@@ -23,11 +23,13 @@ function createWebSocketStore() {
     candles: Candle[];
     ticker: Ticker | null;
     lastPrice: number;
+    prices: Record<string, number>;
   }>({
     connected: false,
     candles: [],
     ticker: null,
     lastPrice: 0,
+    prices: {},
   });
 
   let ws: WebSocket | null = null;
@@ -38,7 +40,9 @@ function createWebSocketStore() {
     if (typeof WebSocket === 'undefined') return;
     if (ws?.readyState === WebSocket.OPEN) return;
 
-    ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol}@kline_1m`);
+    // Subscribe to both kline and ticker streams
+    const streams = `${symbol}@kline_1m/${symbol}@ticker`;
+    ws = new WebSocket(`wss://fstream.binance.com/stream?streams=${streams}`);
 
     ws.onopen = () => {
       update((s) => ({ ...s, connected: true }));
@@ -46,7 +50,10 @@ function createWebSocketStore() {
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      const message = JSON.parse(event.data);
+      const data = message.data;
+      
+      if (!data) return;
 
       if (data.e === "kline") {
         const k = data.k;
@@ -74,15 +81,27 @@ function createWebSocketStore() {
             ...s,
             candles,
             lastPrice: candle.close,
-            ticker: {
-              symbol: "BTC-PERP",
-              price: candle.close,
-              change24h: 0,
-              change24hPct: 0,
-              volume24h: 0,
-            },
+            prices: { ...s.prices, BTCUSDT: candle.close },
           };
         });
+      } else if (data.e === "24hrTicker") {
+        const price = parseFloat(data.c);
+        const change24h = parseFloat(data.p);
+        const change24hPct = parseFloat(data.P);
+        const volume24h = parseFloat(data.v);
+
+        update((s) => ({
+          ...s,
+          lastPrice: price,
+          prices: { ...s.prices, BTCUSDT: price },
+          ticker: {
+            symbol: "BTC-PERP",
+            price,
+            change24h,
+            change24hPct,
+            volume24h,
+          },
+        }));
       }
     };
 

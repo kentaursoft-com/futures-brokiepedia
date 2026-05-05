@@ -3,34 +3,36 @@
 	import { createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 	
 	interface EquityPoint {
-		time: Time;
+		time: number;
 		value: number;
 	}
+	
+	export let data: EquityPoint[] = [];
 	
 	let container: HTMLDivElement;
 	let chart: IChartApi;
 	let equitySeries: ISeriesApi<'Line'>;
 	let drawdownSeries: ISeriesApi<'Line'>;
 	
-	// Generate mock equity curve data
-	function generateEquityData(): { equity: EquityPoint[]; drawdown: EquityPoint[] } {
-		const equity: EquityPoint[] = [];
-		const drawdown: EquityPoint[] = [];
-		let currentEquity = 10000;
-		let peak = 10000;
-		const now = Math.floor(Date.now() / 1000);
-		const days = 30;
+	function processData(points: EquityPoint[]): { equity: any[]; drawdown: any[] } {
+		if (!points || points.length === 0) {
+			return { equity: [], drawdown: [] };
+		}
 		
-		for (let i = days; i >= 0; i--) {
-			const time = now - (i * 86400);
-			const change = (Math.random() - 0.45) * 200; // Slightly positive bias
-			currentEquity += change;
-			if (currentEquity > peak) peak = currentEquity;
+		const equity: any[] = [];
+		const drawdown: any[] = [];
+		let peak = 0;
+		
+		for (const point of points) {
+			// Convert ms timestamp to seconds for lightweight-charts
+			const time = Math.floor(point.time / 1000) as Time;
+			const value = point.value;
 			
-			const dd = ((peak - currentEquity) / peak) * 100;
+			if (value > peak) peak = value;
+			const dd = peak > 0 ? ((peak - value) / peak) * 100 : 0;
 			
-			equity.push({ time: time as Time, value: currentEquity });
-			drawdown.push({ time: time as Time, value: dd });
+			equity.push({ time, value });
+			drawdown.push({ time, value: dd });
 		}
 		
 		return { equity, drawdown };
@@ -77,11 +79,12 @@
 			priceScaleId: 'left'
 		});
 		
-		const data = generateEquityData();
-		equitySeries.setData(data.equity);
-		drawdownSeries.setData(data.drawdown);
+		const processed = processData(data);
+		if (processed.equity.length > 0) {
+			equitySeries.setData(processed.equity);
+			drawdownSeries.setData(processed.drawdown);
+		}
 		
-		// Add area fill to equity
 		equitySeries.applyOptions({
 			lastValueVisible: true,
 			priceLineVisible: true
