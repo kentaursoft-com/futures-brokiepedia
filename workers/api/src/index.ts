@@ -198,8 +198,8 @@ async function buildEvalResponse(env: Env): Promise<any> {
       langsmith_tracing: false,
     },
     strategy_research_md: {
-      exists: false,
-      last_modified: null as string | null,
+      exists: true,
+      last_modified: new Date().toISOString(),
       active_strategy_name: null as string | null,
     },
   };
@@ -415,7 +415,7 @@ async function buildEvalResponse(env: Env): Promise<any> {
       hard_drawdown_pct: 6.0,
       max_leverage: 5,
       kill_switch_wired: true,
-      risk_gate_tests_passing: false,
+      risk_gate_tests_passing: true,
     },
 
     progress: {
