@@ -166,7 +166,9 @@ export function startPolling(intervalMs = 5000): () => void {
   api
     .getState()
     .then((state) => liveState.set(state))
-    .catch(console.error);
+    .catch((err) => {
+      console.error("Initial state fetch failed:", err);
+    });
 
   return () => clearInterval(interval);
 }

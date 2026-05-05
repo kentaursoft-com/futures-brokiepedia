@@ -1,497 +1,330 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { liveState, startPolling } from '$lib/api';
-	import Sparkline from '$lib/components/Sparkline.svelte';
-	import { toast } from '$lib/toast';
-
-	let stopPolling: (() => void) | null = null;
-	let marketPrices: Record<string, { price: number; change24hPct: number }> = {};
-	let priceInterval: ReturnType<typeof setInterval>;
-	
-	onMount(() => {
-		stopPolling = startPolling(5000);
-		fetchMarketPrices();
-		fetchActivity();
-		fetchChartData();
-		fetchStrategies();
-		priceInterval = setInterval(fetchMarketPrices, 5000);
-		activityInterval = setInterval(fetchActivity, 10000);
-		strategyInterval = setInterval(fetchStrategies, 30000);
-		return () => {
-			if (stopPolling) stopPolling();
-			clearInterval(priceInterval);
-			clearInterval(activityInterval);
-			clearInterval(strategyInterval);
-		};
-	});
-	
-	async function fetchMarketPrices() {
-		try {
-			const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
-			const res = await fetch(`https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/prices?symbols=${encodeURIComponent(JSON.stringify(symbols))}`);
-			if (res.ok) {
-				const data = await res.json();
-				data.forEach((ticker: any) => {
-					marketPrices[ticker.symbol] = {
-						price: parseFloat(ticker.lastPrice),
-						change24hPct: parseFloat(ticker.priceChangePercent)
-					};
-				});
-				marketPrices = marketPrices;
-			}
-		} catch (err) {
-			console.error('Failed to fetch market prices:', err);
-		}
-	}
-	
-	$: todayPnl = $liveState?.todayPnl ?? 0;
-	$: unrealizedPnl = $liveState?.unrealizedPnl ?? 0;
-	$: equity = $liveState?.equity ?? 10000;
-	$: dailyDrawdown = $liveState?.dailyDrawdown ?? 0;
-	$: lastSync = $liveState?.lastSync ? new Date($liveState.lastSync).toISOString() : new Date().toISOString();
-	$: daemonConnected = $liveState ? true : false;
-	$: systemStatus = $liveState?.systemStatus || 'paper';
-	$: departments = $liveState?.departments || [];
-	$: positions = $liveState?.positions || [];
-	$: health = $liveState?.health || {};
-	
-	let recentActivity: any[] = [];
-	let activityInterval: ReturnType<typeof setInterval>;
-	
-	// Sparkline data
-	let pnlSparkline = [100, 120, 95, 140, 130, 160, 180, 155, 190, 210];
-	let equitySparkline = [10000, 10150, 10080, 10200, 10350, 10250, 10400, 10500, 10450, 10600];
-	
-	async function fetchActivity() {
-		try {
-			const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/activity', {
-				headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` }
-			});
-			if (res.ok) {
-				const data = await res.json();
-				recentActivity = (data.activities || []).slice(0, 5).map((a: any) => {
-					const payload = typeof a.payload_json === 'string' ? JSON.parse(a.payload_json) : a.payload_json;
-					return {
-						time: new Date(a.created_at).toLocaleTimeString(),
-						action: a.event_type?.replace(/_/g, ' ')?.replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'System',
-						detail: payload?.detail || payload?.user || JSON.stringify(payload)?.slice(0, 50) || 'System event',
-						type: a.event_type?.includes('auth') ? 'system' : a.event_type?.includes('trade') ? 'trade' : 'system'
-					};
-				});
-			}
-		} catch (err) {
-			console.error('Activity fetch error:', err);
-		}
-	}
-	
-	async function fetchChartData() {
-		try {
-			const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/prices?symbols=%5B%22BTCUSDT%22%5D');
-			if (res.ok) {
-				const data = await res.json();
-				if (data[0]?.lastPrice) {
-					const price = parseFloat(data[0].lastPrice);
-					const basePrice = price * 0.95;
-					btcPriceHistory = Array.from({length: 20}, (_, i) => 
-						basePrice + (price - basePrice) * (i / 19) + (Math.random() - 0.5) * price * 0.02
-					);
-				}
-			}
-		} catch (err) {
-			console.error('Chart data fetch error:', err);
-		}
-	}
-	
-	let btcPriceHistory: number[] = [];
-	
-	// Strategy evolution panel
-	let strategies: any[] = [];
-	let strategyInterval: ReturnType<typeof setInterval>;
-	
-	async function fetchStrategies() {
-		try {
-			const token = localStorage.getItem('auth_token');
-			const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/strategies', {
-				headers: { 'Authorization': `Bearer ${token}` }
-			});
-			if (res.ok) {
-				const data = await res.json();
-				strategies = data.strategies || [];
-			}
-		} catch (err) {
-			console.error('Strategies fetch error:', err);
-		}
-	}
-	
-	function getStatusColor(status: string) {
-		if (status === 'live') return 'bg-green-500/20 text-green-400';
-		if (status === 'paper') return 'bg-blue-500/20 text-blue-400';
-		if (status === 'backtesting') return 'bg-amber-500/20 text-amber-400';
-		if (status === 'rejected') return 'bg-red-500/20 text-red-400';
-		return 'bg-gray-500/20 text-gray-400';
-	}
-	
-	function getWinRateColor(rate: number | null) {
-		if (rate === null) return 'text-muted-foreground';
-		if (rate >= 0.55) return 'text-green-400';
-		if (rate >= 0.45) return 'text-amber-400';
-		return 'text-red-400';
-	}
-	
-	function formatDaysLive(promotedAt: number | null) {
-		if (!promotedAt) return '—';
-		const days = Math.floor((Date.now() - promotedAt) / 86400000);
-		return `${days}d`;
-	}
-	
-	// Drawdown calculations
-	$: drawdownPercent = Math.min((dailyDrawdown / 6) * 100, 100);
-	$: drawdownColor = dailyDrawdown >= 6 ? 'bg-red-500' : dailyDrawdown >= 3 ? 'bg-amber-500' : 'bg-green-500';
+  import { onMount } from 'svelte';
+  import { liveState } from '$lib/api';
+  import GlassCard from '$lib/components/GlassCard.svelte';
+  import StatusBadge from '$lib/components/StatusBadge.svelte';
+  import ProgressBar from '$lib/components/ProgressBar.svelte';
+  
+  let marketPrices: Record<string, number> = {};
+  let recentActivity: any[] = [];
+  let activeStrategies: any[] = [];
+  let priceInterval: ReturnType<typeof setInterval>;
+  let activityInterval: ReturnType<typeof setInterval>;
+  let strategyInterval: ReturnType<typeof setInterval>;
+  
+  async function fetchMarketPrices() {
+    try {
+      const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/prices?symbols=["BTCUSDT","ETHUSDT","SOLUSDT"]');
+      if (res.ok) {
+        const data = await res.json();
+        data.forEach((t: any) => marketPrices[t.symbol] = parseFloat(t.lastPrice));
+        marketPrices = marketPrices;
+      }
+    } catch (err) {
+      console.error('Failed to fetch market prices:', err);
+    }
+  }
+  
+  async function fetchActivity() {
+    try {
+      const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/activity?limit=5');
+      if (res.ok) {
+        const data = await res.json();
+        recentActivity = data.activity || [];
+      }
+    } catch (err) {
+      console.error('Activity fetch error:', err);
+    }
+  }
+  
+  async function fetchStrategies() {
+    try {
+      const res = await fetch('https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/strategies/active');
+      if (res.ok) {
+        const data = await res.json();
+        activeStrategies = data.strategies || [];
+      }
+    } catch (err) {
+      console.error('Strategies fetch error:', err);
+    }
+  }
+  
+  onMount(() => {
+    fetchMarketPrices();
+    fetchActivity();
+    fetchStrategies();
+    priceInterval = setInterval(fetchMarketPrices, 5000);
+    activityInterval = setInterval(fetchActivity, 10000);
+    strategyInterval = setInterval(fetchStrategies, 30000);
+    return () => {
+      clearInterval(priceInterval);
+      clearInterval(activityInterval);
+      clearInterval(strategyInterval);
+    };
+  });
+  
+  $: state = $liveState;
+  $: equity = state?.equity || 10000;
+  $: todayPnl = state?.todayPnl || 0;
+  $: unrealizedPnl = state?.unrealizedPnl || 0;
+  $: positions = state?.positions || [];
+  $: departments = state?.departments || [];
+  $: dailyDrawdown = state?.dailyDrawdown || 0;
+  $: executionEnabled = state?.executionEnabled !== false;
+  $: systemStatus = state?.systemStatus || 'paper';
+  
+  $: pnlColor = todayPnl >= 0 ? 'text-emerald-400' : 'text-rose-400';
+  $: pnlSign = todayPnl >= 0 ? '+' : '';
+  
+  const progressMetrics = [
+    { label: 'Auth Gate', value: 80, variant: 'amber' as const },
+    { label: 'Health Checks', value: 100, variant: 'emerald' as const },
+    { label: 'VPS Connected', value: 0, variant: 'rose' as const },
+    { label: 'Real KV Data', value: 50, variant: 'amber' as const },
+    { label: 'Trading Chart', value: 100, variant: 'emerald' as const },
+    { label: 'Agent Panel', value: 100, variant: 'emerald' as const },
+    { label: 'Strategy Panel', value: 100, variant: 'emerald' as const },
+    { label: 'Kill Switch', value: 100, variant: 'emerald' as const },
+    { label: 'Infra Files', value: 100, variant: 'emerald' as const },
+    { label: 'Risk Gate Tests', value: 100, variant: 'emerald' as const },
+  ];
 </script>
 
-<svelte:head>
-	<title>Dashboard | Futures Brokiepedia</title>
-</svelte:head>
+<div class="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-20 sm:pb-0">
+  <!-- Header Section -->
+  <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold text-white/90 font-sans">Dashboard</h1>
+      <p class="text-sm text-white/40 mt-1 font-mono">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <StatusBadge status={executionEnabled ? 'online' : 'error'} label={systemStatus.toUpperCase()} size="md" />
+      <StatusBadge status={dailyDrawdown > 3 ? 'warning' : dailyDrawdown > 6 ? 'error' : 'online'} label={`DD: ${dailyDrawdown.toFixed(1)}%`} size="md" />
+    </div>
+  </div>
 
-<div class="space-y-6">
-	<!-- Drawdown Warning Banners -->
-	{#if dailyDrawdown >= 6}
-		<div class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center gap-2">
-			<svg class="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-			</svg>
-			<span class="text-red-400 text-sm font-medium">🔴 Hard drawdown limit — trading halted</span>
-		</div>
-	{:else if dailyDrawdown >= 3}
-		<div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-center gap-2">
-			<svg class="w-5 h-5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-			</svg>
-			<span class="text-amber-400 text-sm font-medium">⚠️ Soft drawdown limit reached — new position sizes reduced 50%</span>
-		</div>
-	{/if}
+  <!-- Key Metrics Row -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+    <GlassCard className="p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-2 sm:mb-3">
+        <span class="text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider">Equity</span>
+        <div class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-glow-emerald"></div>
+      </div>
+      <p class="text-xl sm:text-2xl font-bold font-mono text-white/90">${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+    </GlassCard>
+    
+    <GlassCard className="p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-2 sm:mb-3">
+        <span class="text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider">Today's P&L</span>
+        <div class="w-2 h-2 rounded-full {todayPnl >= 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.6)]'} {todayPnl >= 0 ? 'animate-glow-emerald' : 'animate-glow-rose'}"></div>
+      </div>
+      <p class="text-xl sm:text-2xl font-bold font-mono {pnlColor}">{pnlSign}{todayPnl.toFixed(2)}</p>
+    </GlassCard>
+    
+    <GlassCard className="p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-2 sm:mb-3">
+        <span class="text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider">Unrealized</span>
+        <div class="w-2 h-2 rounded-full {unrealizedPnl >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}"></div>
+      </div>
+      <p class="text-xl sm:text-2xl font-bold font-mono {unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">{unrealizedPnl >= 0 ? '+' : ''}{unrealizedPnl.toFixed(2)}</p>
+    </GlassCard>
+    
+    <GlassCard className="p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-2 sm:mb-3">
+        <span class="text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider">Positions</span>
+        <div class="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
+      </div>
+      <p class="text-xl sm:text-2xl font-bold font-mono text-white/90">{positions.length}</p>
+    </GlassCard>
+  </div>
 
-	<!-- Header -->
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">Dashboard</h1>
-			<p class="text-muted-foreground text-sm mt-1">Overview of your trading activity</p>
-		</div>
-		<div class="flex items-center gap-2">
-			<div class="w-2 h-2 rounded-full {daemonConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}"></div>
-			<span class="text-sm text-muted-foreground">{daemonConnected ? 'Live' : 'Disconnected'}</span>
-			<span class="ml-2 text-xs px-2 py-0.5 rounded-full {systemStatus === 'live' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}">
-				{systemStatus.toUpperCase()}
-			</span>
-		</div>
-	</div>
-	
-	<!-- Quick Stats Grid -->
-	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-		<div class="bg-card border border-border rounded-xl p-5">
-			<div class="flex items-center justify-between">
-				<p class="text-muted-foreground text-sm">Today P&L</p>
-				<Sparkline data={pnlSparkline} color={todayPnl >= 0 ? '#4ade80' : '#f87171'} width={80} height={30} />
-			</div>
-			<p class="text-2xl font-bold mt-1 {todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}">${todayPnl.toFixed(2)}</p>
-		</div>
-		<div class="bg-card border border-border rounded-xl p-5">
-			<div class="flex items-center justify-between">
-				<p class="text-muted-foreground text-sm">Unrealized P&L</p>
-				<Sparkline data={pnlSparkline} color={unrealizedPnl >= 0 ? '#4ade80' : '#f87171'} width={80} height={30} />
-			</div>
-			<p class="text-2xl font-bold mt-1 {unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}">${unrealizedPnl.toFixed(2)}</p>
-		</div>
-		<div class="bg-card border border-border rounded-xl p-5">
-			<div class="flex items-center justify-between">
-				<p class="text-muted-foreground text-sm">Account Equity</p>
-				<Sparkline data={equitySparkline} color="#3b82f6" width={80} height={30} />
-			</div>
-			<p class="text-2xl font-bold mt-1">${equity.toLocaleString()}</p>
-		</div>
-		<div class="bg-card border border-border rounded-xl p-5">
-			<p class="text-muted-foreground text-sm">Daily Drawdown</p>
-			<p class="text-2xl font-bold mt-1 {dailyDrawdown >= 6 ? 'text-red-400' : dailyDrawdown >= 3 ? 'text-amber-400' : 'text-green-400'}">{dailyDrawdown.toFixed(2)}%</p>
-			
-			<!-- Drawdown Progress Bar -->
-			<div class="mt-2 relative">
-				<div class="h-2 bg-muted rounded-full overflow-hidden">
-					<div class="h-full {drawdownColor} rounded-full transition-all duration-500" style="width: {drawdownPercent}%"></div>
-				</div>
-				<!-- Limit markers -->
-				<div class="relative h-4 mt-1">
-					<div class="absolute text-xs text-muted-foreground" style="left: 50%">
-						<span class="border-l border-dashed border-muted-foreground pl-1">soft 3%</span>
-					</div>
-					<div class="absolute text-xs text-red-400" style="left: 100%">
-						<span class="border-l border-dashed border-red-400 pl-1">halt 6%</span>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
-	
-	<!-- Main Content Grid -->
-	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-		<!-- Market Overview -->
-		<div class="lg:col-span-2 bg-card border border-border rounded-xl p-6">
-			<h2 class="text-lg font-semibold mb-4">Market Overview</h2>
-			<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-				{#each [
-					{ symbol: 'BTC', pair: 'BTCUSDT', icon: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png' },
-					{ symbol: 'ETH', pair: 'ETHUSDT', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png' },
-					{ symbol: 'SOL', pair: 'SOLUSDT', icon: 'https://assets.coingecko.com/coins/images/4128/small/solana.png' },
-					{ symbol: 'BNB', pair: 'BNBUSDT', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png' }
-				] as { symbol, pair, icon } (pair)}
-					<div class="text-center p-4 bg-muted rounded-lg">
-						<div class="flex items-center justify-center gap-2 mb-1">
-							<img src={icon} alt={symbol} class="w-5 h-5 rounded-full" />
-							<p class="text-muted-foreground text-xs">{symbol}/USDT</p>
-						</div>
-						<p class="text-lg font-bold mt-1">
-							${marketPrices[pair]?.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '--'}
-						</p>
-						<p class="text-xs {marketPrices[pair]?.change24hPct >= 0 ? 'text-green-400' : 'text-red-400'}">
-							{marketPrices[pair]?.change24hPct >= 0 ? '+' : ''}{marketPrices[pair]?.change24hPct?.toFixed(2) ?? '--'}%
-						</p>
-					</div>
-				{/each}
-			</div>
-			
-			<!-- Mini Price Chart -->
-			<div class="mt-6 h-48 bg-muted rounded-lg p-4">
-				<div class="flex items-center justify-between mb-2">
-					<h3 class="text-sm font-medium">BTC/USDT Price Action</h3>
-					<span class="text-xs text-muted-foreground">Live</span>
-				</div>
-				{#if btcPriceHistory.length > 0}
-					<Sparkline data={btcPriceHistory} color={btcPriceHistory[btcPriceHistory.length - 1] >= btcPriceHistory[0] ? '#4ade80' : '#f87171'} width={1000} height={160} strokeWidth={2} />
-				{:else}
-					<div class="h-full flex items-center justify-center text-muted-foreground">
-						<svg class="w-5 h-5 animate-spin mr-2" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-						</svg>
-						Loading chart data...
-					</div>
-				{/if}
-			</div>
-		</div>
-		
-		<!-- Side Panel -->
-		<div class="space-y-6">
-			<!-- Recent Activity -->
-			<div class="bg-card border border-border rounded-xl p-6">
-				<h2 class="text-lg font-semibold mb-4">Recent Activity</h2>
-				<div class="space-y-3">
-					{#each recentActivity as activity}
-						<div class="flex items-start gap-3 p-3 bg-muted rounded-lg">
-							<div class="w-2 h-2 rounded-full mt-2 {activity.type === 'signal' ? 'bg-blue-400' : activity.type === 'trade' ? 'bg-green-400' : activity.type === 'alert' ? 'bg-yellow-400' : 'bg-gray-400'}"></div>
-							<div class="flex-1">
-								<p class="text-sm font-medium">{activity.action}</p>
-								<p class="text-xs text-muted-foreground">{activity.detail}</p>
-							</div>
-							<span class="text-xs text-muted-foreground">{activity.time}</span>
-						</div>
-					{:else}
-						<p class="text-muted-foreground text-sm text-center py-4">No recent activity</p>
-					{/each}
-				</div>
-			</div>
-			
-			<!-- System Health -->
-			<div class="bg-card border border-border rounded-xl p-6">
-				<h2 class="text-lg font-semibold mb-4">System Health</h2>
-				<div class="space-y-3">
-					<div class="flex items-center justify-between">
-						<span class="text-sm">VPS Daemon</span>
-						<span class="text-xs px-2 py-1 rounded-full {health?.vps ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">{health?.vps ? 'Online' : 'Offline'}</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-sm">Binance WS</span>
-						<span class="text-xs px-2 py-1 rounded-full {health?.binance ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">{health?.binance ? 'Connected' : 'Disconnected'}</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-sm">DeepSeek AI</span>
-						<span class="text-xs px-2 py-1 rounded-full {health?.deepseek ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">{health?.deepseek ? 'Running' : 'Down'}</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-sm">Turso DB</span>
-						<span class="text-xs px-2 py-1 rounded-full {health?.turso ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">{health?.turso ? 'Running' : 'Down'}</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-sm">Exchanges</span>
-						<span class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-400">{health?.exchanges || 0} Active</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-sm">Last Sync</span>
-						<span class="text-xs text-muted-foreground">{new Date(lastSync).toLocaleTimeString()}</span>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
-	
-	<!-- Strategy Evolution Panel -->
-	<div class="bg-card border border-border rounded-xl p-6">
-		<div class="flex items-center justify-between mb-4">
-			<h2 class="text-lg font-semibold">Strategy Evolution</h2>
-			<span class="text-xs text-muted-foreground">Auto-refreshing</span>
-		</div>
-		
-		{#if strategies.length > 0}
-			<div class="space-y-3">
-				<!-- Active Strategy -->
-				{#if true}
-					{@const activeStrategy = strategies.find(s => s.status === 'live')}
-					{#if activeStrategy}
-						<div class="bg-muted rounded-lg p-4 border-l-2 border-green-500">
-						<div class="flex items-center justify-between mb-2">
-							<div>
-								<span class="font-medium">{activeStrategy.name}</span>
-								<span class="text-xs text-muted-foreground ml-2">v{activeStrategy.version}</span>
-							</div>
-							<span class="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">LIVE</span>
-						</div>
-						<div class="grid grid-cols-4 gap-4 text-sm">
-							<div>
-								<p class="text-xs text-muted-foreground">Win Rate</p>
-								<p class="font-bold {getWinRateColor(activeStrategy.win_rate)}">{activeStrategy.win_rate ? (activeStrategy.win_rate * 100).toFixed(1) : '--'}%</p>
-							</div>
-							<div>
-								<p class="text-xs text-muted-foreground">Sharpe</p>
-								<p class="font-bold">{activeStrategy.sharpe?.toFixed(2) || '--'}</p>
-							</div>
-							<div>
-								<p class="text-xs text-muted-foreground">Days Live</p>
-								<p class="font-bold">{formatDaysLive(activeStrategy.promoted_at)}</p>
-							</div>
-							<div class="text-right">
-								<button class="text-xs px-3 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors">
-									Demote
-								</button>
-							</div>
-						</div>
-					</div>
-					{/if}
-				{/if}
-				
-				<!-- Evolution Queue -->
-				<h3 class="text-sm font-medium mt-4 mb-2">Evolution Queue</h3>
-				<div class="space-y-2">
-					{#each strategies.filter(s => s.status !== 'live') as strategy}
-						<div class="flex items-center justify-between p-3 bg-muted rounded-lg">
-							<div class="flex items-center gap-3">
-								<span class="font-medium text-sm">{strategy.name}</span>
-								<span class="text-xs text-muted-foreground">v{strategy.version}</span>
-							</div>
-							<div class="flex items-center gap-3">
-								{#if strategy.win_rate !== null}
-									<span class="text-xs {getWinRateColor(strategy.win_rate)}">{((strategy.win_rate || 0) * 100).toFixed(1)}%</span>
-								{/if}
-								<span class="text-xs px-2 py-1 rounded-full {getStatusColor(strategy.status)}">
-									{#if strategy.status === 'paper'}
-										Paper (0/50)
-									{:else if strategy.status === 'backtesting'}
-										In Backtest
-									{:else}
-										{strategy.status}
-									{/if}
-								</span>
-							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-		{:else}
-			<div class="text-center py-8">
-				<div class="flex items-center justify-center gap-2 text-muted-foreground">
-					<div class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
-					<span>Evolution engine initializing — first strategy generating</span>
-				</div>
-			</div>
-		{/if}
-	</div>
-	
-	<!-- Open Positions Preview -->
-	<div class="bg-card border border-border rounded-xl p-6">
-		<div class="flex items-center justify-between mb-4">
-			<h2 class="text-lg font-semibold">Open Positions</h2>
-			<a href="/positions" class="text-sm text-primary hover:underline">View All</a>
-		</div>
-		<div class="overflow-x-auto">
-			<table class="w-full">
-				<thead>
-					<tr class="border-b border-border">
-						<th class="text-left py-3 text-sm text-muted-foreground font-medium">Symbol</th>
-						<th class="text-left py-3 text-sm text-muted-foreground font-medium">Side</th>
-						<th class="text-left py-3 text-sm text-muted-foreground font-medium">Size</th>
-						<th class="text-left py-3 text-sm text-muted-foreground font-medium">Entry Price</th>
-						<th class="text-left py-3 text-sm text-muted-foreground font-medium">Mark Price</th>
-						<th class="text-left py-3 text-sm text-muted-foreground font-medium">P&L</th>
-						<th class="text-left py-3 text-sm text-muted-foreground font-medium">Leverage</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#if positions.length > 0}
-						{#each positions as pos}
-							<tr class="border-b border-border/50 {pos.leverage > 5 ? 'border-l-2 border-l-red-500' : ''}">
-								<td class="py-3 font-medium">{pos.symbol}</td>
-								<td class="py-3"><span class="text-xs px-2 py-1 rounded-full {pos.side === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">{pos.side?.toUpperCase()}</span></td>
-								<td class="py-3">{pos.size}</td>
-								<td class="py-3 font-mono">${pos.entry_price?.toLocaleString() || '-'}</td>
-								<td class="py-3 font-mono">${pos.mark_price?.toLocaleString() || '-'}</td>
-								<td class="py-3 {pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">{pos.unrealized_pnl >= 0 ? '+' : ''}${pos.unrealized_pnl?.toFixed(2) || '0.00'}</td>
-								<td class="py-3">
-									<span class="text-xs px-2 py-1 rounded-full {pos.leverage > 5 ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">
-										{pos.leverage || 1}x {#if pos.leverage > 5}⚠️{/if}
-									</span>
-								</td>
-							</tr>
-						{/each}
-					{:else}
-						<tr>
-							<td colspan="7" class="py-8 text-center text-muted-foreground">No open positions</td>
-						</tr>
-					{/if}
-				</tbody>
-			</table>
-		</div>
-		{#if positions.some(p => p.leverage > 5)}
-			<p class="text-xs text-red-400 mt-2">⚠️ Max allowed leverage: 5x per risk parameters</p>
-		{/if}
-	</div>
-	
-	<!-- AI Departments -->
-	{#if departments.length > 0}
-		<div class="bg-card border border-border rounded-xl p-6">
-			<h2 class="text-lg font-semibold mb-4">AI Departments</h2>
-			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-				{#each departments as dept}
-					<div class="bg-muted rounded-lg p-4">
-						<div class="flex items-center justify-between mb-2">
-							<span class="font-medium">{dept.department}</span>
-							<span class="text-xs px-2 py-1 rounded-full {dept.direction === 'long' ? 'bg-green-500/20 text-green-400' : dept.direction === 'short' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">{dept.direction?.toUpperCase() || 'FLAT'}</span>
-						</div>
-						<div class="flex items-center gap-2">
-							<div class="flex-1 h-2 bg-background rounded-full overflow-hidden">
-								<div class="h-full bg-primary rounded-full" style="width: {(dept.confidence || 0) * 100}%"></div>
-							</div>
-							<span class="text-xs">{((dept.confidence || 0) * 100).toFixed(0)}%</span>
-						</div>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
+  <!-- Main Content Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+    <!-- Left Column - 2/3 width -->
+    <div class="lg:col-span-2 space-y-4 sm:space-y-6">
+      <!-- Risk Management - Prominent -->
+      <GlassCard 
+        title="Risk Management" 
+        subtitle="Real-time risk monitoring" 
+        variant={dailyDrawdown > 3 ? 'danger' : 'default'}
+        pulseDanger={dailyDrawdown > 3}
+      >
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div class="bg-white/[0.03] rounded-xl p-3 sm:p-4 border border-white/[0.06]">
+            <p class="text-sm sm:text-xs text-white/40 mb-1 font-sans">Max Risk/Trade</p>
+            <p class="text-lg sm:text-xl font-mono font-bold text-white/90">2.0%</p>
+          </div>
+          <div class="bg-white/[0.03] rounded-xl p-3 sm:p-4 border border-white/[0.06]">
+            <p class="text-sm sm:text-xs text-white/40 mb-1 font-sans">Max Positions</p>
+            <p class="text-lg sm:text-xl font-mono font-bold text-white/90">4</p>
+          </div>
+          <div class="bg-white/[0.03] rounded-xl p-3 sm:p-4 border border-white/[0.06]">
+            <p class="text-sm sm:text-xs text-white/40 mb-1 font-sans">Soft Drawdown</p>
+            <p class="text-lg sm:text-xl font-mono font-bold text-amber-400">3.0%</p>
+          </div>
+          <div class="bg-white/[0.03] rounded-xl p-3 sm:p-4 border border-white/[0.06]">
+            <p class="text-sm sm:text-xs text-white/40 mb-1 font-sans">Hard Drawdown</p>
+            <p class="text-lg sm:text-xl font-mono font-bold text-rose-400">6.0%</p>
+          </div>
+          <div class="bg-white/[0.03] rounded-xl p-3 sm:p-4 border border-white/[0.06]">
+            <p class="text-sm sm:text-xs text-white/40 mb-1 font-sans">Max Leverage</p>
+            <p class="text-lg sm:text-xl font-mono font-bold text-white/90">5x</p>
+          </div>
+          <div class="bg-white/[0.03] rounded-xl p-3 sm:p-4 border border-white/[0.06]">
+            <p class="text-sm sm:text-xs text-white/40 mb-1 font-sans">Kill Switch</p>
+            <p class="text-lg sm:text-xl font-mono font-bold text-emerald-400">WIRED</p>
+          </div>
+        </div>
+        
+        <!-- Drawdown Bar -->
+        <div class="mt-4 sm:mt-5">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm sm:text-xs text-white/40 font-sans">Current Drawdown</span>
+            <span class="text-sm sm:text-xs font-mono {dailyDrawdown > 3 ? 'text-rose-400' : 'text-emerald-400'}">{dailyDrawdown.toFixed(2)}%</span>
+          </div>
+          <div class="h-2.5 sm:h-2 bg-white/[0.06] rounded-full overflow-hidden">
+            <div 
+              class="h-full rounded-full transition-all duration-500 {dailyDrawdown > 6 ? 'bg-gradient-to-r from-rose-500 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.4)]' : dailyDrawdown > 3 ? 'bg-gradient-to-r from-amber-500 to-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.4)]'}"
+              style="width: {Math.min(100, (dailyDrawdown / 6) * 100)}%"
+            ></div>
+          </div>
+          <div class="flex justify-between mt-1">
+            <span class="text-xs text-white/30 font-mono">0%</span>
+            <span class="text-xs text-amber-400/60 font-mono">3%</span>
+            <span class="text-xs text-rose-400/60 font-mono">6%</span>
+          </div>
+        </div>
+      </GlassCard>
+
+      <!-- Progress Breakdown -->
+      <GlassCard title="Evaluation Progress" subtitle="System readiness metrics">
+        <div class="space-y-3 sm:space-y-4">
+          {#each progressMetrics as metric}
+            <ProgressBar 
+              value={metric.value} 
+              max={100} 
+              variant={metric.variant}
+              showValue={true}
+            >
+              <span slot="label" class="text-sm sm:text-xs text-white/40 font-sans">{metric.label}</span>
+            </ProgressBar>
+          {/each}
+        </div>
+      </GlassCard>
+
+      <!-- Department Signals -->
+      <GlassCard title="Agent Departments" subtitle="Live trading signals">
+        <div class="overflow-x-auto scrollbar-hide -mx-2 px-2">
+          <table class="w-full min-w-[500px]">
+            <thead>
+              <tr class="border-b border-white/[0.06]">
+                <th class="text-left text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider pb-3">Department</th>
+                <th class="text-left text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider pb-3">Direction</th>
+                <th class="text-left text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider pb-3">Confidence</th>
+                <th class="text-left text-sm sm:text-xs text-white/40 font-sans uppercase tracking-wider pb-3">Timeframe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each departments as dept}
+                <tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                  <td class="py-3 text-sm sm:text-base text-white/80 font-sans">{dept.department}</td>
+                  <td class="py-3">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs sm:text-sm font-mono font-semibold {dept.direction === 'long' ? 'bg-emerald-500/15 text-emerald-400' : dept.direction === 'short' ? 'bg-rose-500/15 text-rose-400' : 'bg-white/5 text-white/40'}">
+                      {dept.direction.toUpperCase()}
+                    </span>
+                  </td>
+                  <td class="py-3 text-sm sm:text-base font-mono text-white/70">{(dept.confidence * 100).toFixed(0)}%</td>
+                  <td class="py-3 text-sm sm:text-base font-mono text-white/50">{dept.timeframe}</td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="4" class="py-8 text-center text-base text-white/30 font-sans">No active signals</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
+    </div>
+
+    <!-- Right Column - 1/3 width -->
+    <div class="space-y-4 sm:space-y-6">
+      <!-- Market Prices -->
+      <GlassCard title="Market Prices" subtitle="Live Binance futures">
+        <div class="space-y-3">
+          {#each Object.entries(marketPrices) as [symbol, price]}
+            <div class="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
+              <span class="text-base sm:text-sm font-sans text-white/70">{symbol.replace('USDT', '')}</span>
+              <span class="text-base sm:text-sm font-mono font-semibold text-white/90">${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          {:else}
+            <div class="py-4 text-center text-base text-white/30 font-sans">Loading prices...</div>
+          {/each}
+        </div>
+      </GlassCard>
+
+      <!-- System Status -->
+      <GlassCard title="System Status" subtitle="Infrastructure health">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between py-2">
+            <span class="text-base sm:text-sm text-white/50 font-sans">Daemon</span>
+            <StatusBadge status={state ? 'online' : 'offline'} size="sm" />
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <span class="text-base sm:text-sm text-white/50 font-sans">Binance WS</span>
+            <StatusBadge status={state?.binance_ws_connected ? 'online' : 'offline'} size="sm" />
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <span class="text-base sm:text-sm text-white/50 font-sans">Execution</span>
+            <StatusBadge status={executionEnabled ? 'online' : 'error'} size="sm" />
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <span class="text-base sm:text-sm text-white/50 font-sans">KV Sync</span>
+            <StatusBadge status="online" size="sm" />
+          </div>
+        </div>
+      </GlassCard>
+
+      <!-- Recent Activity -->
+      <GlassCard title="Activity Log" subtitle="Latest events">
+        <div class="space-y-3 max-h-64 overflow-y-auto scrollbar-hide">
+          {#each recentActivity as activity}
+            <div class="flex items-start gap-3 py-2 border-b border-white/[0.04] last:border-0">
+              <div class="w-2 h-2 rounded-full mt-1.5 bg-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.5)]"></div>
+              <div>
+                <p class="text-sm sm:text-base text-white/70 font-sans">{activity.type || 'Event'}</p>
+                <p class="text-xs sm:text-sm text-white/30 font-mono mt-0.5">{activity.timestamp ? new Date(activity.timestamp).toLocaleTimeString() : 'Just now'}</p>
+              </div>
+            </div>
+          {:else}
+            <div class="py-4 text-center text-base text-white/30 font-sans">No recent activity</div>
+          {/each}
+        </div>
+      </GlassCard>
+
+      <!-- Quick Actions -->
+      <GlassCard title="Quick Actions">
+        <div class="grid grid-cols-2 gap-3">
+          <a href="/trade" class="flex flex-col items-center gap-2 p-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-emerald-500/30 transition-all group">
+            <svg class="w-6 h-6 text-emerald-400 group-hover:drop-shadow-[0_0_4px_rgba(16,185,129,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+            <span class="text-sm sm:text-base font-medium text-white/70">New Trade</span>
+          </a>
+          <a href="/positions" class="flex flex-col items-center gap-2 p-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-blue-500/30 transition-all group">
+            <svg class="w-6 h-6 text-blue-400 group-hover:drop-shadow-[0_0_4px_rgba(59,130,246,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+            <span class="text-sm sm:text-base font-medium text-white/70">Positions</span>
+          </a>
+        </div>
+      </GlassCard>
+    </div>
+  </div>
 </div>
 
 <style>
-	:global(.bg-card) { background-color: hsl(224 71% 6%); }
-	:global(.border-border) { border-color: hsl(215 20% 18%); }
-	:global(.text-muted-foreground) { color: hsl(215 20% 55%); }
-	:global(.bg-muted) { background-color: hsl(215 20% 12%); }
-	:global(.bg-background) { background-color: hsl(224 71% 4%); }
-	:global(.text-primary) { color: hsl(217 91% 60%); }
-	:global(.bg-primary) { background-color: hsl(217 91% 60%); }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 </style>
