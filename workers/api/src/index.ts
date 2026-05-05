@@ -212,8 +212,10 @@ async function buildEvalResponse(env: Env): Promise<any> {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
         ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
       },
+      cf: { cacheTtl: 0 },
     });
     vpsStatus.response_ms = Date.now() - start;
     
