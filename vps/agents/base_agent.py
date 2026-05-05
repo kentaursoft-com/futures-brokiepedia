@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 import aiohttp
+from urllib.parse import quote
 
 QUESTDB_URL = "http://localhost:9001"
 
@@ -29,7 +30,7 @@ class BaseAgent(ABC):
             sql = f"SELECT * FROM {table} WHERE symbol = '{self.symbol}' ORDER BY ts DESC LIMIT {limit}"
             
             async with aiohttp.ClientSession() as session:
-                encoded_sql = sql.replace(" ", "%20").replace("'", "%27")
+                encoded_sql = quote(sql, safe='')
                 async with session.get(
                     f"{QUESTDB_URL}/exec?query={encoded_sql}",
                 ) as resp:
