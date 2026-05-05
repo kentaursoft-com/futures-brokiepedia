@@ -159,7 +159,7 @@
 										<div class="flex items-center gap-3">
 											<span class="text-sm w-16">${item.range}</span>
 											<div class="flex-1 h-6 bg-background rounded-full overflow-hidden">
-												<div class="h-full bg-primary rounded-full flex items-center justify-end px-2" style="width: {(item.count / Math.max(...analytics.tradeDistribution.map((d: any) => d.count))) * 100}%">
+												<div class="h-full bg-primary rounded-full flex items-center justify-end px-2" style="width: {(item.count / Math.max(...analytics.tradeDistribution.map(d => d.count))) * 100}%">
 													<span class="text-xs">{item.count}</span>
 												</div>
 											</div>
