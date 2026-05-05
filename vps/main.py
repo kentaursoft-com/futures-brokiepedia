@@ -68,18 +68,36 @@ except ImportError:
     LLM_AGENTS_AVAILABLE = False
     print("[warn] LLM agents not available")
 
+# Import hybrid orchestrator (DeepSeek + OpenRouter)
+try:
+    from agents.hybrid_orchestrator import hybrid_orchestrator
+    HYBRID_AGENTS_AVAILABLE = True
+except ImportError:
+    HYBRID_AGENTS_AVAILABLE = False
+    print("[warn] Hybrid agents not available")
+
 # Determine which orchestrator to use
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-if OPENROUTER_API_KEY and LLM_AGENTS_AVAILABLE:
+DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+
+if DEEPSEEK_KEY and DEEPSEEK_KEY != "your_key_here" and HYBRID_AGENTS_AVAILABLE:
+    # Hybrid: DeepSeek for consensus, OpenRouter for agents
+    agent_orchestrator = hybrid_orchestrator
+    AGENTS_AVAILABLE = True
+    AGENTS_TYPE = "hybrid"
+    print("[daemon] Using HYBRID agents (OpenRouter agents + DeepSeek consensus)")
+elif OPENROUTER_KEY and OPENROUTER_KEY != "your_key_here" and LLM_AGENTS_AVAILABLE:
+    # Pure OpenRouter
     agent_orchestrator = llm_orchestrator
     AGENTS_AVAILABLE = True
     AGENTS_TYPE = "llm"
     print("[daemon] Using LLM-powered agents (OpenRouter)")
 elif CLASSICAL_AGENTS_AVAILABLE:
+    # Classical fallback
     agent_orchestrator = agent_orchestrator
     AGENTS_AVAILABLE = True
     AGENTS_TYPE = "classical"
-    print("[daemon] Using classical agents (no OpenRouter key)")
+    print("[daemon] Using classical agents (no API keys)")
 else:
     AGENTS_AVAILABLE = False
     AGENTS_TYPE = "none"
@@ -268,12 +286,13 @@ async def get_state():
             _daemon_state["agents_type"] = AGENTS_TYPE
             
             # Add LLM usage stats if available
-            if AGENTS_TYPE == "llm":
+            if AGENTS_TYPE in ["llm", "hybrid"]:
+                usage_stats = status.get("usage", {})
                 _daemon_state["llm_usage"] = {
-                    "total_calls": status.get("total_llm_calls", 0),
-                    "total_tokens": status.get("total_tokens", 0),
-                    "total_cost_usd": status.get("total_cost_usd", 0.0),
-                    "model": "openrouter/free",
+                    "architecture": status.get("architecture", AGENTS_TYPE),
+                    "agents": status.get("agents", {}),
+                    "orchestrator": status.get("orchestrator", {}),
+                    "total_cost_usd": usage_stats.get("total_cost_usd", 0.0),
                 }
         except Exception as e:
             print(f"[daemon] Agent status error: {e}")
@@ -333,9 +352,29 @@ async def get_status(x_internal_key: str = Header(None)):
                 "type": AGENTS_TYPE,
                 "running": status.get("running", False),
                 "cycle_count": status.get("cycle_count", 0),
-                "llm_enabled": AGENTS_TYPE == "llm",
+                "llm_enabled": AGENTS_TYPE in ["llm", "hybrid"],
+                "architecture": status.get("architecture", AGENTS_TYPE),
             }
-            if AGENTS_TYPE == "llm":
+            if AGENTS_TYPE == "hybrid":
+                usage = status.get("usage", {})
+                agent_status["llm_usage"] = {
+                    "agents": {
+                        "provider": "openrouter",
+                        "model": "free",
+                        "total_calls": usage.get("agents", {}).get("openrouter_calls", 0),
+                        "total_tokens": usage.get("agents", {}).get("openrouter_tokens", 0),
+                        "cost": "$0.00",
+                    },
+                    "orchestrator": {
+                        "provider": "deepseek",
+                        "model": "deepseek-chat (V4 Flash)",
+                        "total_calls": usage.get("orchestrator", {}).get("deepseek_calls", 0),
+                        "total_tokens": usage.get("orchestrator", {}).get("deepseek_tokens", 0),
+                        "total_cost": usage.get("orchestrator", {}).get("deepseek_cost", 0.0),
+                    },
+                    "total_cost_usd": usage.get("total_cost_usd", 0.0),
+                }
+            elif AGENTS_TYPE == "llm":
                 agent_status["llm_usage"] = {
                     "total_calls": status.get("total_llm_calls", 0),
                     "total_tokens": status.get("total_tokens", 0),
