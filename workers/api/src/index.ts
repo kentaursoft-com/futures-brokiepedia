@@ -253,8 +253,9 @@ async function buildEvalResponse(env: Env): Promise<any> {
         };
       }
     }
-  } catch {
+  } catch (e: any) {
     // VPS unreachable — keep defaults
+    console.error("VPS fetch error:", e.message || e);
   }
 
   // ── STEP D: Check secrets configured ──

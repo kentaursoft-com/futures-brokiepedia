@@ -52,6 +52,26 @@ except ImportError:
             
     market_manager = DummyMarketManager()
 
+# Import agent orchestrator
+try:
+    from agents.orchestrator import agent_orchestrator
+    AGENTS_AVAILABLE = True
+except ImportError:
+    AGENTS_AVAILABLE = False
+    print("[warn] agents not available")
+    
+    class DummyOrchestrator:
+        def __init__(self):
+            self.running = False
+        async def run_loop(self, interval=60):
+            pass
+        def stop(self):
+            pass
+        def get_status(self):
+            return {"running": False}
+            
+    agent_orchestrator = DummyOrchestrator()
+
 # Risk gate instance
 risk_gate = RiskGate(
     max_risk_pct=2.0,
@@ -118,6 +138,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[daemon] Market data start warning: {e}")
     
+    # Start AI agent orchestrator
+    if AGENTS_AVAILABLE:
+        try:
+            asyncio.create_task(agent_orchestrator.run_loop(interval=60))
+            print("[daemon] AI agent orchestrator started")
+        except Exception as e:
+            print(f"[daemon] Agent orchestrator start warning: {e}")
+    
     # Start health reporter loop if available
     if HEALTH_REPORTER_AVAILABLE:
         asyncio.create_task(run_health_loop(lambda: _binance_ws_alive))
@@ -136,6 +164,8 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
+    if AGENTS_AVAILABLE:
+        agent_orchestrator.stop()
     if MARKET_DATA_AVAILABLE:
         await market_manager.stop()
     print("[daemon] Shutting down...")
@@ -168,7 +198,7 @@ async def ping():
 
 @app.get("/api/v1/state")
 async def get_state():
-    """Return full daemon state with real market data"""
+    """Return full daemon state with real market data and agent signals"""
     # Update timestamps
     _daemon_state["last_sync"] = int(datetime.now(timezone.utc).timestamp() * 1000)
     _daemon_state["last_candle_ts"] = datetime.now(timezone.utc).isoformat()
@@ -200,6 +230,19 @@ async def get_state():
     
     # Update market connection status
     _daemon_state["binance_ws_connected"] = market_manager.is_connected if MARKET_DATA_AVAILABLE else False
+    
+    # Update agent signals if available
+    if AGENTS_AVAILABLE:
+        try:
+            status = agent_orchestrator.get_status()
+            if status.get("last_signals"):
+                _daemon_state["departments"] = status["last_signals"]
+            if status.get("last_aggregated"):
+                _daemon_state["aggregated_signal"] = status["last_aggregated"]
+            _daemon_state["agents_initialized"] = True
+            _daemon_state["langgraph_running"] = status.get("running", False)
+        except Exception as e:
+            print(f"[daemon] Agent status error: {e}")
     
     return _daemon_state
 
