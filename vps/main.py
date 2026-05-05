@@ -52,13 +52,37 @@ except ImportError:
             
     market_manager = DummyMarketManager()
 
-# Import agent orchestrator
+# Import agent orchestrator (classical)
 try:
     from agents.orchestrator import agent_orchestrator
-    AGENTS_AVAILABLE = True
+    CLASSICAL_AGENTS_AVAILABLE = True
 except ImportError:
+    CLASSICAL_AGENTS_AVAILABLE = False
+    print("[warn] classical agents not available")
+
+# Import LLM agent orchestrator
+try:
+    from agents.llm_orchestrator import llm_orchestrator
+    LLM_AGENTS_AVAILABLE = True
+except ImportError:
+    LLM_AGENTS_AVAILABLE = False
+    print("[warn] LLM agents not available")
+
+# Determine which orchestrator to use
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+if OPENROUTER_API_KEY and LLM_AGENTS_AVAILABLE:
+    agent_orchestrator = llm_orchestrator
+    AGENTS_AVAILABLE = True
+    AGENTS_TYPE = "llm"
+    print("[daemon] Using LLM-powered agents (OpenRouter)")
+elif CLASSICAL_AGENTS_AVAILABLE:
+    agent_orchestrator = agent_orchestrator
+    AGENTS_AVAILABLE = True
+    AGENTS_TYPE = "classical"
+    print("[daemon] Using classical agents (no OpenRouter key)")
+else:
     AGENTS_AVAILABLE = False
-    print("[warn] agents not available")
+    AGENTS_TYPE = "none"
     
     class DummyOrchestrator:
         def __init__(self):
@@ -241,6 +265,16 @@ async def get_state():
                 _daemon_state["aggregated_signal"] = status["last_aggregated"]
             _daemon_state["agents_initialized"] = True
             _daemon_state["langgraph_running"] = status.get("running", False)
+            _daemon_state["agents_type"] = AGENTS_TYPE
+            
+            # Add LLM usage stats if available
+            if AGENTS_TYPE == "llm":
+                _daemon_state["llm_usage"] = {
+                    "total_calls": status.get("total_llm_calls", 0),
+                    "total_tokens": status.get("total_tokens", 0),
+                    "total_cost_usd": status.get("total_cost_usd", 0.0),
+                    "model": "openrouter/free",
+                }
         except Exception as e:
             print(f"[daemon] Agent status error: {e}")
     
@@ -290,6 +324,27 @@ async def get_status(x_internal_key: str = Header(None)):
     except:
         pass
     
+    # Get agent status
+    agent_status = {}
+    if AGENTS_AVAILABLE:
+        try:
+            status = agent_orchestrator.get_status()
+            agent_status = {
+                "type": AGENTS_TYPE,
+                "running": status.get("running", False),
+                "cycle_count": status.get("cycle_count", 0),
+                "llm_enabled": AGENTS_TYPE == "llm",
+            }
+            if AGENTS_TYPE == "llm":
+                agent_status["llm_usage"] = {
+                    "total_calls": status.get("total_llm_calls", 0),
+                    "total_tokens": status.get("total_tokens", 0),
+                    "total_cost_usd": status.get("total_cost_usd", 0.0),
+                    "model": "openrouter/free",
+                }
+        except:
+            pass
+    
     from fastapi.responses import JSONResponse
     return JSONResponse(
         content={
@@ -308,6 +363,7 @@ async def get_status(x_internal_key: str = Header(None)):
             "strategy_research_md_exists": research_md_exists,
             "strategy_research_md_modified": research_md_modified,
             "active_strategy_name": _daemon_state.get("activeAsset"),
+            "agent_status": agent_status,
         },
         headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
     )
