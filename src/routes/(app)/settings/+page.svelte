@@ -2,6 +2,10 @@
   import { onMount } from 'svelte';
   import GlassCard from '$lib/components/GlassCard.svelte';
   import { theme, accentColors, applyTheme, type ThemeConfig } from '$lib/stores/theme';
+  import { currency, cryptoCurrencies, fiatCurrencies, formatCryptoFiat } from '$lib/stores/currency';
+  
+  $: preview = formatCryptoFiat(100, $currency.cryptoCurrency, $currency.fiatCurrency, $currency.exchangeRates);
+  $: previewPnl = formatCryptoFiat(2.5, $currency.cryptoCurrency, $currency.fiatCurrency, $currency.exchangeRates);
 
   let previewAccent = $theme.accentColor;
   let previewGlass = $theme.glassOpacity;
@@ -146,6 +150,65 @@
           </span>
         </button>
       {/each}
+    </div>
+  </GlassCard>
+
+  <!-- Currency Settings -->
+  <GlassCard title="Currency Settings" subtitle="Choose your display currencies">
+    <div class="space-y-5">
+      <!-- Crypto Currency -->
+      <div>
+        <span class="text-sm text-white/60 mb-2 block">Platform Crypto Currency</span>
+        <div class="flex gap-2 p-1 bg-white/[0.03] rounded-xl border border-white/[0.06] w-fit">
+          {#each cryptoCurrencies as crypto}
+            <button
+              class="px-4 py-2 rounded-lg text-sm font-medium transition-all {$currency.cryptoCurrency === crypto.value ? 'bg-white/[0.08] text-white/90' : 'text-white/40 hover:text-white/70'}"
+              on:click={() => currency.update(c => ({ ...c, cryptoCurrency: crypto.value }))}
+            >
+              <span class="mr-1">{crypto.icon}</span>
+              {crypto.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Fiat Currency -->
+      <div>
+        <span class="text-sm text-white/60 mb-2 block">Fiat Currency</span>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {#each fiatCurrencies as fiat}
+            <button
+              class="px-4 py-2.5 rounded-xl text-sm font-medium transition-all border {$currency.fiatCurrency === fiat.value ? 'bg-white/[0.08] text-white/90 border-white/20' : 'text-white/40 hover:text-white/70 border-white/[0.06]'}"
+              on:click={() => currency.update(c => ({ ...c, fiatCurrency: fiat.value }))}
+            >
+              <span class="mr-1">{fiat.symbol}</span>
+              {fiat.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div class="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+        <span class="text-xs text-white/30 uppercase tracking-wider block mb-3">Preview</span>
+        <div class="space-y-2">
+          <div class="flex justify-between items-center">
+            <span class="text-sm text-white/50">Total Balance</span>
+            <div class="text-right">
+              <span class="text-sm font-mono font-semibold text-white/80">{preview.crypto}</span>
+              <span class="text-xs text-white/40 block">{preview.fiat}</span>
+            </div>
+          </div>
+          <div class="h-px bg-white/[0.06]"></div>
+          <div class="flex justify-between items-center">
+            <span class="text-sm text-white/50">Today's P&L</span>
+            <div class="text-right">
+              <span class="text-sm font-mono font-semibold text-emerald-400">+{previewPnl.crypto}</span>
+              <span class="text-xs text-emerald-400/60 block">+{previewPnl.fiat.replace('≈ ', '')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </GlassCard>
 

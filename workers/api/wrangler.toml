@@ -26,8 +26,7 @@ database_id = "c7d20ca7-b8c5-4b35-8446-e7e4146425bb"
 
 # Environment Variables (non-sensitive)
 [vars]
-# UPDATE THIS WITH YOUR VPS IP
-DAEMON_URL = "http://178.238.229.116:8000"
+DAEMON_URL = "https://daemon.brokiepedia.com"
 
 # Secrets (set via wrangler secret put <NAME>)
 # DEEPSEEK_API_KEY

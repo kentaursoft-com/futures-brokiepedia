@@ -45,6 +45,8 @@ const PUBLIC_ENDPOINTS = [
   "/api/v1/paper-trading/balance",
   "/api/v1/paper-trading/positions",
   "/api/v1/paper-trading/history",
+  "/api/v1/exchanges",
+  "/api/v1/exchanges/balances",
 ];
 
 function isPublicEndpoint(path: string): boolean {
@@ -875,6 +877,37 @@ export default {
           console.error("Signals proxy error:", e);
         }
         return jsonResponse({ signals: [], count: 0 });
+      }
+
+      // Exchange endpoints - proxy to VPS
+      if (path === "/api/v1/exchanges") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/exchanges`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
+        } catch (e) {
+          console.error("Exchanges proxy error:", e);
+        }
+        return jsonResponse({ exchanges: [], count: 0 });
+      }
+
+      if (path === "/api/v1/exchanges/balances") {
+        try {
+          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const res = await fetch(`${daemonUrl}/api/v1/exchanges/balances`, {
+            headers: {
+              ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
+            },
+          });
+          if (res.ok) return jsonResponse(await res.json());
+        } catch (e) {
+          console.error("Exchange balances proxy error:", e);
+        }
+        return jsonResponse({ balances: [], count: 0, total_balance: 0, total_pnl: 0 });
       }
 
       // Analytics endpoint - proxy to VPS for real analytics
