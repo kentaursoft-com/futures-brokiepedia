@@ -14,18 +14,55 @@ export interface Env {
   VPS_URL?: string;
   VPS_INTERNAL_KEY?: string;
   EVAL_API_KEY?: string;
+  JWT_SECRET?: string;
+  AUTH_PASSWORD_HASH?: string;
+  ALLOWED_ORIGIN?: string;
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+function getCorsHeaders(env: Env): Record<string, string> {
+  const origin = env.ALLOWED_ORIGIN || "https://futures.brokiepedia.com";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Credentials": "true",
+    "Vary": "Origin",
+  };
+}
+
+// Rate limiting
+const rateLimitMap = new Map<string, { count: number; reset: number }>();
+const RATE_LIMIT_WINDOW = 60_000;
+const RATE_LIMIT_MAX_GENERAL = 120;
+const RATE_LIMIT_MAX_AUTH = 10;
+
+function checkRateLimit(ip: string, max: number): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.reset) {
+    rateLimitMap.set(ip, { count: 1, reset: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= max) return false;
+  entry.count++;
+  return true;
+}
 
 const challenges = new Map<
   string,
   { challenge: Uint8Array; expires: number }
 >();
+
+// Clean up expired challenges every 5 minutes
+let lastChallengeCleanup = 0;
+function cleanupChallenges() {
+  const now = Date.now();
+  if (now - lastChallengeCleanup < 300_000) return;
+  lastChallengeCleanup = now;
+  for (const [id, entry] of challenges) {
+    if (now > entry.expires) challenges.delete(id);
+  }
+}
 
 // Public endpoints that don't require authentication
 const PUBLIC_ENDPOINTS = [
@@ -55,23 +92,71 @@ function isPublicEndpoint(path: string): boolean {
   );
 }
 
-function validateSession(request: Request): boolean {
-  // Check Authorization: Bearer header first
+// Real JWT signing with HMAC-SHA256
+async function signJWT(env: Env, payload: Record<string, unknown>): Promise<string> {
+  const secret = env.JWT_SECRET || "fallback-secret-change-me";
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(JSON.stringify(payload));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    enc.encode(`${header}.${body}`)
+  );
+  const sig = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return `${header}.${body}.${sig}`;
+}
+
+// Real JWT verification with HMAC-SHA256
+async function verifyJWT(env: Env, token: string): Promise<Record<string, unknown> | null> {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    
+    const secret = env.JWT_SECRET || "fallback-secret-change-me";
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+    
+    const sigBytes = Uint8Array.from(atob(parts[2]), c => c.charCodeAt(0));
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      sigBytes,
+      enc.encode(`${parts[0]}.${parts[1]}`)
+    );
+    
+    if (!valid) return null;
+    
+    const payload = JSON.parse(atob(parts[1]));
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function validateSession(request: Request, env: Env): Promise<boolean> {
   const authHeader = request.headers.get("Authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
-    try {
-      const parts = token.split(".");
-      if (parts.length !== 3) return false;
-      const payload = JSON.parse(atob(parts[1]));
-      if (payload.exp && payload.exp < Date.now()) return false;
-      return true;
-    } catch {
-      return false;
-    }
+    const payload = await verifyJWT(env, token);
+    return payload !== null;
   }
 
-  // Fallback to cookie
   const cookieHeader = request.headers.get("Cookie");
   if (!cookieHeader) return false;
 
@@ -84,18 +169,35 @@ function validateSession(request: Request): boolean {
   const sessionToken = cookies["session_token"];
   if (!sessionToken) return false;
 
-  try {
-    const parts = sessionToken.split(".");
-    if (parts.length !== 3) return false;
-    const payload = JSON.parse(atob(parts[1]));
-    if (payload.exp && payload.exp < Date.now()) return false;
-    return true;
-  } catch {
-    return false;
+  const payload = await verifyJWT(env, sessionToken);
+  return payload !== null;
+}
+
+// Password verification using SHA-256 hash comparison
+async function verifyPassword(env: Env, password: string): Promise<boolean> {
+  const storedHash = env.AUTH_PASSWORD_HASH;
+  if (!storedHash) {
+    // Legacy fallback: compare plaintext (to be removed after secret is set)
+    return password === "BenBen111902!";
+  }
+  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return hashHex === storedHash;
+}
+
+// Structured logger
+function log(level: "info" | "warn" | "error", msg: string, data?: unknown) {
+  const entry = { level, ts: Date.now(), msg, ...(data ? { data } : {}) };
+  if (level === "error") {
+    console.error(JSON.stringify(entry));
+  } else {
+    console.log(JSON.stringify(entry));
   }
 }
 
-// Cache daemon state with TTL
+function logError(msg: string, e: unknown) {
+  log("error", msg, { error: e instanceof Error ? e.message : String(e) });
+}
 let cachedState: any = null;
 let stateCacheTime = 0;
 const CACHE_TTL_MS = 5000;
@@ -107,7 +209,7 @@ async function fetchDaemonState(env: Env): Promise<any> {
   }
 
   try {
-    const daemonUrl = env.DAEMON_URL || "http://localhost:8080";
+    const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
     const res = await fetch(`${daemonUrl}/api/v1/state`, {
       method: "GET",
       headers: {
@@ -130,7 +232,7 @@ async function fetchDaemonState(env: Env): Promise<any> {
       return state;
     }
   } catch (e) {
-    console.error("Daemon fetch failed:", e);
+    logError("Daemon fetch failed", e);
   }
 
   const fallback = await env.LIVE_STATE.get("dashboard_state");
@@ -412,22 +514,27 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+      const headers = getCorsHeaders(env);
+      return new Response(null, { headers });
     }
 
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Rate limiting
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const isAuthEndpoint = path.includes("/auth/");
+    if (!checkRateLimit(ip, isAuthEndpoint ? RATE_LIMIT_MAX_AUTH : RATE_LIMIT_MAX_GENERAL)) {
+      return jsonResponse(env, { error: "Too many requests" }, 429);
+    }
+
+    // Clean up expired challenges periodically
+    cleanupChallenges();
+
     // Check authentication for non-public endpoints
     if (!isPublicEndpoint(path)) {
-      if (!validateSession(request)) {
-        return jsonResponse(
-          {
-            error: "Unauthorized",
-            message: "Valid session required. Please authenticate.",
-          },
-          401,
-        );
+      if (!(await validateSession(request, env))) {
+        return jsonResponse(env, { error: "Unauthorized", message: "Valid session required." }, 401);
       }
     }
 
@@ -436,7 +543,7 @@ export default {
       if (path === "/api/eval") {
         const evalKey = url.searchParams.get("key");
         if (!evalKey || evalKey !== env.EVAL_API_KEY) {
-          return jsonResponse({ error: "Unauthorized" }, 403);
+          return jsonResponse(env, { error: "Unauthorized" }, 403);
         }
 
         // Gather comprehensive project state
@@ -444,7 +551,7 @@ export default {
         return new Response(JSON.stringify(evalResponse, null, 2), {
           headers: {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
+            ...getCorsHeaders(env),
           },
         });
       }
@@ -455,14 +562,14 @@ export default {
         let vps_ping = null;
         let vps_error = null;
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const pingRes = await fetch(`${daemonUrl}/ping`, { timeout: 5000 } as any);
           vps_ping = { status: pingRes.status, ok: pingRes.ok };
         } catch (e: any) {
           vps_error = e.message || String(e);
         }
         
-        return jsonResponse({
+        return jsonResponse(env, {
           status: "ok",
           timestamp: Date.now(),
           daemon_connected: !!env.DAEMON_URL,
@@ -482,12 +589,12 @@ export default {
           });
           if (binanceRes.ok) {
             const data = await binanceRes.json();
-            return jsonResponse(data);
+            return jsonResponse(env, data);
           }
         } catch (e) {
-          console.error("Binance proxy error:", e);
+          logError("Binance proxy error:", e);
         }
-        return jsonResponse([], 500);
+        return jsonResponse(env, [], 500);
       }
 
       // Telegram webhook - PUBLIC
@@ -554,7 +661,7 @@ export default {
           });
         }
         
-        return jsonResponse({ ok: true });
+        return jsonResponse(env, { ok: true });
       }
 
       // Auth challenge - PUBLIC
@@ -566,7 +673,7 @@ export default {
           expires: Date.now() + 60000,
         });
 
-        return jsonResponse({
+        return jsonResponse(env, {
           challenge: Array.from(challenge),
           challengeId,
           rp: { name: "Futures Brokiepedia", id: "futures.brokiepedia.com" },
@@ -590,15 +697,15 @@ export default {
               )
               .run();
           } catch (e) {
-            console.error("Failed to store credential:", e);
+            logError("Failed to store credential:", e);
           }
 
-          return jsonResponse({
+          return jsonResponse(env, {
             success: true,
             message: "Passkey registered",
           });
         }
-        return jsonResponse({ error: "Invalid registration data" }, 400);
+        return jsonResponse(env, { error: "Invalid registration data" }, 400);
       }
 
       // Auth login - PUBLIC (username/password)
@@ -606,26 +713,21 @@ export default {
         const body = (await request.json()) as { username?: string; password?: string };
         
         if (!body.username || !body.password) {
-          return jsonResponse({ error: "Username and password are required" }, 400);
+          return jsonResponse(env, { error: "Username and password are required" }, 400);
         }
         
-        // Validate credentials
-        if (body.username === "Kentaur" && body.password === "BenBen111902!") {
-          // Create JWT-like token
-          const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }));
-          const payload = btoa(
-            JSON.stringify({
-              user: "Kentaur",
-              username: "Kentaur",
-              role: "admin",
-              exp: Date.now() + 86400000, // 24 hours
-              iat: Date.now(),
-              authMethod: "password",
-            }),
-          );
-          const token = `${header}.${payload}.signature`;
+        const isValid = body.username === "Kentaur" && await verifyPassword(env, body.password);
+        if (isValid) {
+          const now = Math.floor(Date.now() / 1000);
+          const token = await signJWT(env, {
+            user: "Kentaur",
+            username: "Kentaur",
+            role: "admin",
+            exp: now + 86400,
+            iat: now,
+            authMethod: "password",
+          });
 
-          // Log successful auth
           ctx.waitUntil(
             env.AUDIT_DB.prepare(
               `INSERT INTO audit_log (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)`,
@@ -639,10 +741,9 @@ export default {
               .run(),
           );
 
-          return jsonResponse({ success: true, token, user: { username: "Kentaur", role: "admin" } });
+          return jsonResponse(env, { success: true, token, user: { username: "Kentaur", role: "admin" } });
         }
         
-        // Log failed auth attempt
         ctx.waitUntil(
           env.AUDIT_DB.prepare(
             `INSERT INTO audit_log (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)`,
@@ -657,25 +758,21 @@ export default {
             .catch(() => {}),
         );
         
-        return jsonResponse({ error: "Invalid username or password" }, 401);
+        return jsonResponse(env, { error: "Invalid username or password" }, 401);
       }
 
       // Auth verify - PUBLIC
       if (path === "/api/v1/auth/verify" && request.method === "POST") {
         const body = (await request.json()) as any;
         if (body.id && body.rawId && body.response?.signature) {
-          // Create JWT-like token
-          const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }));
-          const payload = btoa(
-            JSON.stringify({
-              user: "admin",
-              exp: Date.now() + 86400000, // 24 hours
-              iat: Date.now(),
-            }),
-          );
-          const token = `${header}.${payload}.signature`;
+          const now = Math.floor(Date.now() / 1000);
+          const token = await signJWT(env, {
+            user: "admin",
+            exp: now + 86400,
+            iat: now,
+            authMethod: "passkey",
+          });
 
-          // Log successful auth
           ctx.waitUntil(
             env.AUDIT_DB.prepare(
               `INSERT INTO audit_log (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)`,
@@ -689,21 +786,21 @@ export default {
               .run(),
           );
 
-          return jsonResponse({ success: true, token });
+          return jsonResponse(env, { success: true, token });
         }
-        return jsonResponse({ error: "Invalid authentication data" }, 400);
+        return jsonResponse(env, { error: "Invalid authentication data" }, 400);
       }
 
       // Protected endpoints below
 
       if (path === "/api/v1/state") {
         const state = await fetchDaemonState(env);
-        return jsonResponse(state);
+        return jsonResponse(env, state);
       }
 
       if (path === "/api/v1/departments") {
         const state = await fetchDaemonState(env);
-        return jsonResponse({
+        return jsonResponse(env, {
           departments: state.departments || [],
           last_update: state.last_sync || 0,
         });
@@ -711,7 +808,7 @@ export default {
 
       if (path === "/api/v1/positions") {
         const state = await fetchDaemonState(env);
-        return jsonResponse({
+        return jsonResponse(env, {
           positions: state.positions || [],
           count: (state.positions || []).length,
         });
@@ -720,32 +817,32 @@ export default {
       // Paper Trading endpoints
       if (path === "/api/v1/paper-trading/prices") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/paper-trading/prices`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Paper trading prices error:", e);
+          logError("Paper trading prices error:", e);
         }
-        return jsonResponse({ prices: {}, timestamp: Date.now() });
+        return jsonResponse(env, { prices: {}, timestamp: Date.now() });
       }
 
       if (path === "/api/v1/paper-trading/balance") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/paper-trading/balance`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Paper trading balance error:", e);
+          logError("Paper trading balance error:", e);
         }
-        return jsonResponse({
+        return jsonResponse(env, {
           balance: 10000,
           initial_balance: 10000,
           total_pnl: 0,
@@ -760,38 +857,38 @@ export default {
 
       if (path === "/api/v1/paper-trading/positions") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/paper-trading/positions`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Paper trading positions error:", e);
+          logError("Paper trading positions error:", e);
         }
-        return jsonResponse({ positions: [], count: 0 });
+        return jsonResponse(env, { positions: [], count: 0 });
       }
 
       if (path === "/api/v1/paper-trading/history") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/paper-trading/history`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Paper trading history error:", e);
+          logError("Paper trading history error:", e);
         }
-        return jsonResponse({ trades: [], count: 0 });
+        return jsonResponse(env, { trades: [], count: 0 });
       }
 
       if (path === "/api/v1/paper-trading/execute" && request.method === "POST") {
         try {
           const body = await request.json();
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/paper-trading/execute`, {
             method: "POST",
             headers: {
@@ -816,12 +913,12 @@ export default {
                 .run()
                 .catch(() => {}),
             );
-            return jsonResponse(result);
+            return jsonResponse(env, result);
           }
-          return jsonResponse({ error: "Failed to execute trade" }, 500);
+          return jsonResponse(env, { error: "Failed to execute trade" }, 500);
         } catch (e) {
-          console.error("Paper trading execute error:", e);
-          return jsonResponse({ error: "Failed to execute trade" }, 500);
+          logError("Paper trading execute error:", e);
+          return jsonResponse(env, { error: "Failed to execute trade" }, 500);
         }
       }
 
@@ -829,7 +926,7 @@ export default {
         try {
           const tradeId = path.replace("/api/v1/paper-trading/close/", "");
           const body = await request.json();
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/paper-trading/close/${tradeId}`, {
             method: "POST",
             headers: {
@@ -854,85 +951,83 @@ export default {
                 .run()
                 .catch(() => {}),
             );
-            return jsonResponse(result);
+            return jsonResponse(env, result);
           }
-          return jsonResponse({ error: "Failed to close trade" }, 500);
+          return jsonResponse(env, { error: "Failed to close trade" }, 500);
         } catch (e) {
-          console.error("Paper trading close error:", e);
-          return jsonResponse({ error: "Failed to close trade" }, 500);
+          logError("Paper trading close error:", e);
+          return jsonResponse(env, { error: "Failed to close trade" }, 500);
         }
       }
 
       // Signals endpoint - proxy to VPS for real signals
       if (path === "/api/v1/signals") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/signals`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Signals proxy error:", e);
+          logError("Signals proxy error:", e);
         }
-        return jsonResponse({ signals: [], count: 0 });
+        return jsonResponse(env, { signals: [], count: 0 });
       }
 
       // Exchange endpoints - proxy to VPS
       if (path === "/api/v1/exchanges") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/exchanges`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Exchanges proxy error:", e);
+          logError("Exchanges proxy error:", e);
         }
-        return jsonResponse({ exchanges: [], count: 0 });
+        return jsonResponse(env, { exchanges: [], count: 0 });
       }
 
       if (path === "/api/v1/exchanges/balances") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/exchanges/balances`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Exchange balances proxy error:", e);
+          logError("Exchange balances proxy error:", e);
         }
-        return jsonResponse({ balances: [], count: 0, total_balance: 0, total_pnl: 0 });
+        return jsonResponse(env, { balances: [], count: 0, total_balance: 0, total_pnl: 0 });
       }
 
       // Analytics endpoint - proxy to VPS for real analytics
       if (path === "/api/v1/analytics") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const fetchUrl = `${daemonUrl}/api/v1/analytics`;
-          console.log(`[worker] Fetching analytics from ${fetchUrl}`);
+          log("info", "Fetching analytics", { url: fetchUrl });
           const res = await fetch(fetchUrl, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          console.log(`[worker] VPS response status: ${res.status}`);
           if (res.ok) {
             const data = await res.json();
-            console.log(`[worker] VPS data: ${JSON.stringify(data).substring(0, 100)}`);
-            return jsonResponse(data);
+            return jsonResponse(env, data);
           }
           const errorText = await res.text();
-          console.log(`[worker] VPS error: ${res.status} ${errorText.substring(0, 200)}`);
+          log("error", "Analytics proxy failed", { status: res.status, body: errorText.substring(0, 200) });
         } catch (e: any) {
-          console.error(`[worker] Analytics proxy error: ${e.message || e}`);
+          logError("Analytics proxy error", e);
         }
-        return jsonResponse({
+        return jsonResponse(env, {
           totalReturn: 0,
           sharpeRatio: 0,
           maxDrawdown: 0,
@@ -951,17 +1046,17 @@ export default {
       // Activity endpoint - proxy to VPS for real activity
       if (path === "/api/v1/activity") {
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8000";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(`${daemonUrl}/api/v1/activity`, {
             headers: {
               ...(env.VPS_INTERNAL_KEY ? { "X-Internal-Key": env.VPS_INTERNAL_KEY } : {}),
             },
           });
-          if (res.ok) return jsonResponse(await res.json());
+          if (res.ok) return jsonResponse(env, await res.json());
         } catch (e) {
-          console.error("Activity proxy error:", e);
+          logError("Activity proxy error:", e);
         }
-        return jsonResponse({ activity: [], count: 0 });
+        return jsonResponse(env, { activity: [], count: 0 });
       }
 
       // Strategies endpoint
@@ -974,7 +1069,7 @@ export default {
           ).all();
           
           if (result.results && result.results.length > 0) {
-            return jsonResponse({ strategies: result.results });
+            return jsonResponse(env, { strategies: result.results });
           }
           
           // Fallback: generate from daemon state
@@ -1015,9 +1110,9 @@ export default {
             }
           ];
           
-          return jsonResponse({ strategies: mockStrategies });
+          return jsonResponse(env, { strategies: mockStrategies });
         } catch (e) {
-          return jsonResponse({ strategies: [] });
+          return jsonResponse(env, { strategies: [] });
         }
       }
 
@@ -1050,9 +1145,9 @@ export default {
               darkMode: true,
             },
           };
-          return jsonResponse(stored ? JSON.parse(stored) : defaults);
+          return jsonResponse(env, stored ? JSON.parse(stored) : defaults);
         } catch (e) {
-          return jsonResponse({ error: "Failed to load settings" }, 500);
+          return jsonResponse(env, { error: "Failed to load settings" }, 500);
         }
       }
 
@@ -1076,9 +1171,9 @@ export default {
               .catch(() => {}),
           );
           
-          return jsonResponse({ success: true, message: "Settings saved" });
+          return jsonResponse(env, { success: true, message: "Settings saved" });
         } catch (e) {
-          return jsonResponse({ error: "Failed to save settings" }, 500);
+          return jsonResponse(env, { error: "Failed to save settings" }, 500);
         }
       }
 
@@ -1087,9 +1182,9 @@ export default {
           const result = await env.AUDIT_DB.prepare(
             `SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 10`,
           ).all();
-          return jsonResponse({ activities: result.results || [] });
+          return jsonResponse(env, { activities: result.results || [] });
         } catch (e) {
-          return jsonResponse({ activities: [] });
+          return jsonResponse(env, { activities: [] });
         }
       }
 
@@ -1099,14 +1194,14 @@ export default {
         };
 
         if (!body.passkey_verified) {
-          return jsonResponse(
+          return jsonResponse(env,
             { error: "Passkey verification required" },
             403,
           );
         }
 
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8080";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           await fetch(`${daemonUrl}/api/v1/killswitch`, {
             method: "POST",
             headers: {
@@ -1116,7 +1211,7 @@ export default {
             },
           });
         } catch (e) {
-          console.error("Daemon kill-switch failed:", e);
+          logError("Daemon kill-switch failed:", e);
         }
 
         await env.LIVE_STATE.put("execution_enabled", "false");
@@ -1137,7 +1232,7 @@ export default {
           .run();
 
         ctx.waitUntil(sendTelegramAlert(env, "🛑 KILL-SWITCH TRIGGERED"));
-        return jsonResponse({
+        return jsonResponse(env, {
           success: true,
           message: "Kill switch activated",
         });
@@ -1151,7 +1246,7 @@ export default {
           expires: Date.now() + 60000,
         });
 
-        return jsonResponse({
+        return jsonResponse(env, {
           challenge: Array.from(challenge),
           challengeId,
           message: "Confirm kill-switch with passkey",
@@ -1161,7 +1256,7 @@ export default {
       if (path === "/api/v1/agent/task" && request.method === "POST") {
         const body = await request.json();
         await env.AGENT_QUEUE.send(body);
-        return jsonResponse({ success: true, message: "Task queued" });
+        return jsonResponse(env, { success: true, message: "Task queued" });
       }
 
       if (path === "/api/v1/strategies/active") {
@@ -1169,15 +1264,15 @@ export default {
           const result = await env.AUDIT_DB.prepare(
             `SELECT * FROM strategies ORDER BY created_at DESC LIMIT 5`,
           ).all();
-          return jsonResponse({ strategies: result.results || [] });
+          return jsonResponse(env, { strategies: result.results || [] });
         } catch (e) {
-          return jsonResponse({ strategies: [] });
+          return jsonResponse(env, { strategies: [] });
         }
       }
 
       if (path === "/api/v1/agents/verdicts") {
         const state = await fetchDaemonState(env);
-        return jsonResponse({
+        return jsonResponse(env, {
           departments: state.departments || [],
           last_update: state.last_sync || 0,
         });
@@ -1188,7 +1283,7 @@ export default {
         const tf = url.searchParams.get("tf") || "1h";
 
         try {
-          const daemonUrl = env.DAEMON_URL || "http://localhost:8080";
+          const daemonUrl = env.DAEMON_URL || "https://daemon.brokiepedia.com";
           const res = await fetch(
             `${daemonUrl}/api/v1/ohlcv?symbol=${symbol}&tf=${tf}`,
             {
@@ -1201,19 +1296,19 @@ export default {
           );
           if (res.ok) {
             const data = await res.json();
-            return jsonResponse(data);
+            return jsonResponse(env, data);
           }
         } catch (e) {
-          console.error("OHLCV fetch failed:", e);
+          logError("OHLCV fetch failed:", e);
         }
 
-        return jsonResponse({ candles: [] });
+        return jsonResponse(env, { candles: [] });
       }
 
-      return jsonResponse({ error: "Not found" }, 404);
+      return jsonResponse(env, { error: "Not found" }, 404);
     } catch (err) {
-      console.error("API Error:", err);
-      return jsonResponse({ error: "Internal server error" }, 500);
+      logError("API Error:", err);
+      return jsonResponse(env, { error: "Internal server error" }, 500);
     }
   },
 
@@ -1223,17 +1318,17 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     for (const message of batch.messages) {
-      console.log("Processing agent task:", message.body);
+      log("info", "Processing agent task", { body: message.body });
     }
   },
 };
 
-function jsonResponse(data: unknown, status = 200): Response {
+function jsonResponse(env: Env, data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
-      ...corsHeaders,
+      ...getCorsHeaders(env),
     },
   });
 }

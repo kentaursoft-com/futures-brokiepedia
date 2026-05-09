@@ -1,6 +1,7 @@
 <script lang="ts">
-	import Icon from './Icon.svelte';
-	
+	import { onMount } from 'svelte';
+	import { api } from '../api';
+
 	interface Alert {
 		id: string;
 		type: 'price' | 'rsi' | 'drawdown' | 'custom';
@@ -11,21 +12,43 @@
 		triggered: boolean;
 		createdAt: number;
 	}
-	
-	let alerts: Alert[] = [
-		{ id: '1', type: 'price', symbol: 'BTC-PERP', condition: 'above', value: 45000, message: 'BTC above $45,000', triggered: false, createdAt: Date.now() - 3600000 },
-		{ id: '2', type: 'rsi', symbol: 'BTC-PERP', condition: 'above', value: 70, message: 'RSI overbought (>70)', triggered: false, createdAt: Date.now() - 7200000 },
-		{ id: '3', type: 'drawdown', symbol: 'PORTFOLIO', condition: 'above', value: 3, message: 'Daily drawdown > 3%', triggered: true, createdAt: Date.now() - 1800000 }
-	];
-	
+
+	let alerts: Alert[] = [];
+	let loading = true;
+	let error: string | null = null;
+	let showForm = false;
+
 	let newAlertType: Alert['type'] = 'price';
 	let newAlertSymbol = 'BTC-PERP';
 	let newAlertCondition: Alert['condition'] = 'above';
 	let newAlertValue = 0;
 	let newAlertMessage = '';
-	let showForm = false;
-	
-	function addAlert() {
+
+	async function loadAlerts() {
+		loading = true;
+		error = null;
+		try {
+			const data = await api.fetch('/api/v1/settings') as any;
+			alerts = data?.notifications?.alerts || data?.alerts || [];
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load alerts';
+			alerts = [];
+		}
+		loading = false;
+	}
+
+	async function saveAlerts() {
+		try {
+			await api.fetch('/api/v1/settings', {
+				method: 'POST',
+				body: JSON.stringify({ alerts }),
+			});
+		} catch (e) {
+			// Silently fail - alerts still work locally
+		}
+	}
+
+	async function addAlert() {
 		const alert: Alert = {
 			id: crypto.randomUUID(),
 			type: newAlertType,
@@ -37,14 +60,16 @@
 			createdAt: Date.now()
 		};
 		alerts = [...alerts, alert];
+		await saveAlerts();
 		showForm = false;
 		resetForm();
 	}
-	
-	function removeAlert(id: string) {
+
+	async function removeAlert(id: string) {
 		alerts = alerts.filter(a => a.id !== id);
+		await saveAlerts();
 	}
-	
+
 	function resetForm() {
 		newAlertType = 'price';
 		newAlertSymbol = 'BTC-PERP';
@@ -52,14 +77,16 @@
 		newAlertValue = 0;
 		newAlertMessage = '';
 	}
-	
+
 	function getAlertIcon(type: string) {
 		return type === 'price' ? 'dollar' : type === 'rsi' ? 'bar-chart' : type === 'drawdown' ? 'warning' : 'alarm';
 	}
-	
+
 	function formatTime(ts: number) {
 		return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 	}
+
+	onMount(loadAlerts);
 </script>
 
 <div class="rounded-lg border bg-card p-4">
@@ -117,28 +144,44 @@
 		</div>
 	{/if}
 	
-	<div class="space-y-2 max-h-[300px] overflow-y-auto">
-		{#each alerts as alert}
-			<div class="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2 {alert.triggered ? 'border border-amber-500/30' : ''}">
-				<div class="flex items-center gap-2">
-					<Icon name={getAlertIcon(alert.type)} size="1.5rem" class_name="text-muted-foreground" />
-					<div>
-						<p class="text-sm font-medium {alert.triggered ? 'text-amber-400' : ''}">{alert.message}</p>
-						<p class="text-xs text-muted-foreground">{alert.symbol} • {formatTime(alert.createdAt)}</p>
+	{#if loading}
+		<div class="text-center py-8">
+			<div class="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+			<p class="text-xs text-muted-foreground mt-2">Loading alerts...</p>
+		</div>
+	{:else if error}
+		<div class="text-center py-8">
+			<p class="text-xs text-red-400">{error}</p>
+			<button on:click={loadAlerts} class="mt-1 text-xs text-primary hover:underline">Retry</button>
+		</div>
+	{:else if alerts.length === 0}
+		<div class="text-center py-8">
+			<p class="text-sm text-muted-foreground">No alerts configured</p>
+			<p class="text-xs text-muted-foreground mt-1">Create alerts for price, RSI, or drawdown thresholds</p>
+		</div>
+	{:else}
+		<div class="space-y-2 max-h-[300px] overflow-y-auto">
+			{#each alerts as alert}
+				<div class="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2 {alert.triggered ? 'border border-amber-500/30' : ''}">
+					<div class="flex items-center gap-2">
+						<div>
+							<p class="text-sm font-medium {alert.triggered ? 'text-amber-400' : ''}">{alert.message}</p>
+							<p class="text-xs text-muted-foreground">{alert.symbol} • {formatTime(alert.createdAt)}</p>
+						</div>
+					</div>
+					<div class="flex items-center gap-2">
+						{#if alert.triggered}
+							<span class="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-400">TRIGGERED</span>
+						{/if}
+						<button 
+							on:click={() => removeAlert(alert.id)}
+							class="text-muted-foreground hover:text-red-400 transition-colors"
+						>
+							✕
+						</button>
 					</div>
 				</div>
-				<div class="flex items-center gap-2">
-					{#if alert.triggered}
-						<span class="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-400">TRIGGERED</span>
-					{/if}
-					<button 
-						on:click={() => removeAlert(alert.id)}
-						class="text-muted-foreground hover:text-red-400 transition-colors"
-					>
-						✕
-					</button>
-				</div>
-			</div>
-		{/each}
-	</div>
+			{/each}
+		</div>
+	{/if}
 </div>

@@ -1,75 +1,24 @@
 <script lang="ts">
-	import Icon from './Icon.svelte';
-	
-	interface TradeIdea {
-		id: string;
-		author: string;
-		avatar: string;
-		symbol: string;
-		side: 'long' | 'short';
-		entry: number;
-		target: number;
-		stop: number;
-		reasoning: string;
-		likes: number;
-		liked: boolean;
-		timestamp: number;
-	}
-	
-	let ideas: TradeIdea[] = [
-		{
-			id: '1',
-			author: 'QuantBot_Alpha',
-			avatar: '🤖',
-			symbol: 'BTC-PERP',
-			side: 'long',
-			entry: 43200,
-			target: 45000,
-			stop: 42500,
-			reasoning: 'EMA20 crossing above EMA50 on 4h timeframe. Volume confirms breakout. Funding rate negative = bullish contrarian signal.',
-			likes: 42,
-			liked: false,
-			timestamp: Date.now() - 1800000
-		},
-		{
-			id: '2',
-			author: 'TrendHunter',
-			avatar: 'graph',
-			symbol: 'ETH-PERP',
-			side: 'short',
-			entry: 2580,
-			target: 2400,
-			stop: 2650,
-			reasoning: 'RSI divergence on daily. Double top formation. High funding rate suggests overcrowded longs.',
-			likes: 28,
-			liked: true,
-			timestamp: Date.now() - 3600000
-		},
-		{
-			id: '3',
-			author: 'FundingArb_Pro',
-			avatar: 'bolt',
-			symbol: 'SOL-PERP',
-			side: 'long',
-			entry: 98.5,
-			target: 110,
-			stop: 95,
-			reasoning: 'Funding rate >0.08% per 8h on 3 exchanges. Pure arbitrage play — market neutral with positive carry.',
-			likes: 67,
-			liked: false,
-			timestamp: Date.now() - 7200000
+	import { onMount } from 'svelte';
+	import { api } from '../api';
+
+	let signals: any[] = [];
+	let loading = true;
+	let error: string | null = null;
+
+	async function loadSignals() {
+		loading = true;
+		error = null;
+		try {
+			const data = await api.getSignals();
+			signals = data.signals || [];
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load signals';
+			signals = [];
 		}
-	];
-	
-	function toggleLike(id: string) {
-		ideas = ideas.map(idea => {
-			if (idea.id === id) {
-				return { ...idea, liked: !idea.liked, likes: idea.liked ? idea.likes - 1 : idea.likes + 1 };
-			}
-			return idea;
-		});
+		loading = false;
 	}
-	
+
 	function formatTime(ts: number) {
 		const mins = Math.floor((Date.now() - ts) / 60000);
 		if (mins < 60) return `${mins}m ago`;
@@ -77,82 +26,75 @@
 		if (hours < 24) return `${hours}h ago`;
 		return `${Math.floor(hours / 24)}d ago`;
 	}
-	
-	function getRiskReward(idea: TradeIdea) {
-		const risk = Math.abs(idea.entry - idea.stop);
-		const reward = Math.abs(idea.target - idea.entry);
-		return (reward / risk).toFixed(2);
-	}
+
+	onMount(loadSignals);
 </script>
 
 <div class="rounded-lg border bg-card p-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold">Trade Ideas Feed</h2>
-		<span class="text-xs text-muted-foreground">Anonymized setups from agents</span>
+		<h2 class="text-sm font-semibold">Agent Signals Feed</h2>
+		<button on:click={loadSignals} class="text-xs text-primary hover:underline">Refresh</button>
 	</div>
 	
-	<div class="space-y-4 max-h-[500px] overflow-y-auto">
-		{#each ideas as idea}
-			<div class="rounded-lg bg-secondary/50 p-4 space-y-3">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<Icon name={idea.avatar} size="1.5rem" class_name="text-muted-foreground" />
+	{#if loading}
+		<div class="text-center py-8">
+			<div class="inline-block w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+			<p class="text-xs text-muted-foreground mt-2">Loading agent signals...</p>
+		</div>
+	{:else if error}
+		<div class="text-center py-8">
+			<p class="text-sm text-red-400">{error}</p>
+			<button on:click={loadSignals} class="mt-2 text-xs text-primary hover:underline">Retry</button>
+		</div>
+	{:else if signals.length === 0}
+		<div class="text-center py-8">
+			<p class="text-sm text-muted-foreground">No agent signals yet</p>
+			<p class="text-xs text-muted-foreground mt-1">Signals will appear when the AI agents generate trade ideas</p>
+		</div>
+	{:else}
+		<div class="space-y-3 max-h-[500px] overflow-y-auto">
+			{#each signals as signal}
+				<div class="rounded-lg bg-secondary/50 p-4 space-y-2">
+					<div class="flex items-center justify-between">
 						<div>
-							<p class="text-sm font-medium">{idea.author}</p>
-							<p class="text-xs text-muted-foreground">{formatTime(idea.timestamp)}</p>
+							<p class="text-sm font-medium">{signal.department || signal.department_name || 'Agent Signal'}</p>
+							<p class="text-xs text-muted-foreground">{signal.timestamp ? formatTime(signal.timestamp) : 'Just now'}</p>
 						</div>
+						<span class="rounded px-2 py-0.5 text-xs font-medium {signal.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : signal.direction === 'short' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}">
+							{(signal.direction || signal.side || 'NEUTRAL').toUpperCase()}
+						</span>
 					</div>
-					<span class="rounded px-2 py-0.5 text-xs font-medium {idea.side === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">
-						{idea.side.toUpperCase()}
-					</span>
+					
+					{#if signal.symbol}
+						<div class="flex items-center gap-4 text-sm">
+							<div>
+								<span class="text-xs text-muted-foreground">Symbol</span>
+								<p class="font-medium">{signal.symbol}</p>
+							</div>
+							{#if signal.confidence != null}
+								<div>
+									<span class="text-xs text-muted-foreground">Confidence</span>
+									<p class="font-medium">{(signal.confidence * 100).toFixed(0)}%</p>
+								</div>
+							{/if}
+							{#if signal.regime_tag}
+								<div>
+									<span class="text-xs text-muted-foreground">Regime</span>
+									<p class="font-medium">{signal.regime_tag}</p>
+								</div>
+							{/if}
+						</div>
+					{/if}
+					
+					{#if signal.reasoning}
+						<p class="text-sm text-muted-foreground">{signal.reasoning}</p>
+					{/if}
 				</div>
-				
-				<div class="flex items-center gap-4 text-sm">
-					<div>
-						<span class="text-xs text-muted-foreground">Symbol</span>
-						<p class="font-medium">{idea.symbol}</p>
-					</div>
-					<div>
-						<span class="text-xs text-muted-foreground">Entry</span>
-						<p class="font-medium">${idea.entry.toLocaleString()}</p>
-					</div>
-					<div>
-						<span class="text-xs text-muted-foreground">Target</span>
-						<p class="font-medium text-emerald-400">${idea.target.toLocaleString()}</p>
-					</div>
-					<div>
-						<span class="text-xs text-muted-foreground">Stop</span>
-						<p class="font-medium text-red-400">${idea.stop.toLocaleString()}</p>
-					</div>
-					<div>
-						<span class="text-xs text-muted-foreground">R:R</span>
-						<p class="font-medium">{getRiskReward(idea)}:1</p>
-					</div>
-				</div>
-				
-				<p class="text-sm text-muted-foreground">{idea.reasoning}</p>
-				
-				<div class="flex items-center gap-4 pt-2 border-t border-border">
-					<button 
-						on:click={() => toggleLike(idea.id)}
-						class="flex items-center gap-1 text-sm {idea.liked ? 'text-pink-400' : 'text-muted-foreground hover:text-pink-400'} transition-colors"
-					>
-						<Icon name={idea.liked ? 'heart-fill' : 'heart'} size="1rem" class_name={idea.liked ? 'text-pink-400' : ''} />
-				{idea.likes}
-					</button>
-					<button class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-						<Icon name="save" size="0.875rem" /> Save
-					</button>
-					<button class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-						<Icon name="clipboard" size="0.875rem" /> Copy Setup
-					</button>
-				</div>
-			</div>
-		{/each}
-	</div>
+			{/each}
+		</div>
+	{/if}
 	
 	<p class="mt-4 text-xs text-muted-foreground text-center">
-		<Icon name="warning" size="0.875rem" class_name="text-amber-400" />
-		These are agent-generated ideas. Always verify with your own analysis.
+		AI-generated signals for analysis. Always verify before trading.
 	</p>
 </div>

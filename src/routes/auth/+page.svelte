@@ -30,9 +30,9 @@
 				throw new Error(data.error || 'Login failed');
 			}
 			
-			// Store token for API client (localStorage) AND cookie for SSR
-			localStorage.setItem('auth_token', data.token);
-			document.cookie = `session_token=${data.token}; path=/; max-age=86400; SameSite=Strict`;
+			// Store token ONLY in httpOnly-friendly cookie (server will read it)
+			// Do NOT store in localStorage
+			document.cookie = `session_token=${data.token}; path=/; max-age=86400; SameSite=Strict; Secure`;
 			
 			toast.success('Welcome back! Redirecting...');
 			setTimeout(() => {
@@ -42,7 +42,6 @@
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Login failed. Please try again.';
 			toast.error(error);
-			console.error('Login error:', err);
 		} finally {
 			isLoading = false;
 		}

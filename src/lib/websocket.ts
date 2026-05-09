@@ -46,7 +46,6 @@ function createWebSocketStore() {
 
     ws.onopen = () => {
       update((s) => ({ ...s, connected: true }));
-      console.log("[Binance WS] Connected");
     };
 
     ws.onmessage = (event) => {
@@ -107,12 +106,10 @@ function createWebSocketStore() {
 
     ws.onclose = () => {
       update((s) => ({ ...s, connected: false }));
-      console.log("[Binance WS] Disconnected, reconnecting in 3s...");
       reconnectTimer = setTimeout(connect, 3000);
     };
 
-    ws.onerror = (err) => {
-      console.error("[Binance WS] Error:", err);
+    ws.onerror = () => {
       ws?.close();
     };
   }

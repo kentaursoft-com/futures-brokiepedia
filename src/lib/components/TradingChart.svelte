@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import { createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 	import { binanceWS, type Candle } from '../websocket';
 
@@ -31,11 +31,6 @@
 	}
 
 	onMount(() => {
-		// Connect to Binance WebSocket
-		binanceWS.connect();
-		
-		console.log('[TradingChart] Chart container dimensions:', chartContainer.clientWidth, chartContainer.clientHeight);
-		
 		chart = createChart(chartContainer, {
 			width: chartContainer.clientWidth,
 			height: chartContainer.clientHeight,
@@ -94,7 +89,6 @@
 
 		// Subscribe to candle updates
 		const unsubscribe = binanceWS.subscribe(state => {
-			console.log('[TradingChart] WS state:', state.connected, 'candles:', state.candles.length);
 			if (state.candles.length > 0) {
 				const chartData = state.candles.map((c: Candle) => ({
 					time: c.time,
@@ -103,7 +97,6 @@
 					low: c.low,
 					close: c.close
 				}));
-				console.log('[TradingChart] Setting data:', chartData.length, 'candles');
 
 				const volumeData = state.candles.map((c: Candle) => ({
 					time: c.time,
@@ -138,7 +131,6 @@
 		});
 		resizeObserver.observe(chartContainer);
 
-		// Connect to Binance WebSocket
 		binanceWS.connect();
 
 		return () => {
@@ -149,9 +141,6 @@
 		};
 	});
 
-	onDestroy(() => {
-		binanceWS.disconnect();
-	});
 </script>
 
 <div bind:this={chartContainer} style="width: 100%; height: 500px;"></div>

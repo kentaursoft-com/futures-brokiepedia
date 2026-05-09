@@ -3,16 +3,18 @@ import type { DashboardState } from "./types";
 
 // Use the Cloudflare Worker as API gateway
 const API_BASE = "https://futures-brokiepedia-api.kentaursoft-com.workers.dev";
-// VPS backend for direct access (paper trading, analytics, etc.)
-const VPS_BASE = "http://178.238.229.116:8000";
+
+function getSessionToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)session_token=([^;]*)/);
+  return match ? match[1] : null;
+}
 
 class ApiClient {
-  private token: string | null = null;
+  constructor() {}
 
-  constructor() {
-    if (typeof window !== "undefined") {
-      this.token = localStorage.getItem("auth_token");
-    }
+  get token(): string | null {
+    return getSessionToken();
   }
 
   async fetch(path: string, options?: RequestInit): Promise<unknown> {
@@ -20,8 +22,9 @@ class ApiClient {
       "Content-Type": "application/json",
     };
 
-    if (this.token) {
-      headers["Authorization"] = `Bearer ${this.token}`;
+    const token = this.token;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
     const res = await fetch(`${API_BASE}${path}`, {
@@ -30,11 +33,12 @@ class ApiClient {
         ...headers,
         ...options?.headers,
       },
+      credentials: "include",
     });
 
     if (res.status === 401) {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("auth_token");
+        document.cookie = "session_token=; path=/; max-age=0; SameSite=Strict; Secure";
         window.location.href = "/auth";
       }
     }
@@ -95,22 +99,9 @@ class ApiClient {
     }>;
   }
 
-  // Direct VPS fetch (for endpoints blocked by worker)
-  private async vpsFetch(path: string, options?: RequestInit): Promise<unknown> {
-    const res = await fetch(`${VPS_BASE}${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-    if (!res.ok) throw new Error(`VPS API error: ${res.status}`);
-    return res.json();
-  }
-
-  // Paper Trading API (direct to VPS)
+  // Paper Trading API (via Worker proxy)
   async getPaperTradingPrices(): Promise<{ prices: Record<string, { price: number; change24h: number }>; timestamp: number }> {
-    return this.vpsFetch("/api/v1/paper-trading/prices") as Promise<any>;
+    return this.fetch("/api/v1/paper-trading/prices") as Promise<any>;
   }
 
   async getPaperBalance(): Promise<{
@@ -124,42 +115,42 @@ class ApiClient {
     win_rate: number;
     timestamp: number;
   }> {
-    return this.vpsFetch("/api/v1/paper-trading/balance") as Promise<any>;
+    return this.fetch("/api/v1/paper-trading/balance") as Promise<any>;
   }
 
   async getPaperPositions(): Promise<{ positions: any[]; count: number }> {
-    return this.vpsFetch("/api/v1/paper-trading/positions") as Promise<any>;
+    return this.fetch("/api/v1/paper-trading/positions") as Promise<any>;
   }
 
   async executePaperTrade(symbol: string, side: string, size: number, leverage?: number): Promise<any> {
-    return this.vpsFetch("/api/v1/paper-trading/execute", {
+    return this.fetch("/api/v1/paper-trading/execute", {
       method: "POST",
       body: JSON.stringify({ symbol, side, size, leverage: leverage || 1.0 }),
     }) as Promise<any>;
   }
 
   async closePaperTrade(tradeId: string, exitPrice: number): Promise<any> {
-    return this.vpsFetch(`/api/v1/paper-trading/close/${tradeId}`, {
+    return this.fetch(`/api/v1/paper-trading/close/${tradeId}`, {
       method: "POST",
       body: JSON.stringify({ exit_price: exitPrice }),
     }) as Promise<any>;
   }
 
   async getPaperTradeHistory(): Promise<{ trades: any[]; count: number }> {
-    return this.vpsFetch("/api/v1/paper-trading/history") as Promise<any>;
+    return this.fetch("/api/v1/paper-trading/history") as Promise<any>;
   }
 
-  // Analytics, Signals, Activity (direct to VPS)
+  // Analytics, Signals, Activity (via Worker proxy)
   async getAnalytics(): Promise<any> {
-    return this.vpsFetch("/api/v1/analytics") as Promise<any>;
+    return this.fetch("/api/v1/analytics") as Promise<any>;
   }
 
   async getSignals(): Promise<{ signals: any[]; count: number }> {
-    return this.vpsFetch("/api/v1/signals") as Promise<any>;
+    return this.fetch("/api/v1/signals") as Promise<any>;
   }
 
   async getActivity(): Promise<{ activity: any[]; count: number }> {
-    return this.vpsFetch("/api/v1/activity") as Promise<any>;
+    return this.fetch("/api/v1/activity") as Promise<any>;
   }
 
   isAuthenticated(): boolean {
@@ -167,9 +158,8 @@ class ApiClient {
   }
 
   logout() {
-    this.token = null;
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("auth_token");
+    if (typeof document !== "undefined") {
+      document.cookie = "session_token=; path=/; max-age=0; SameSite=Strict; Secure";
     }
   }
 }
@@ -179,14 +169,17 @@ export const api = new ApiClient();
 // Live dashboard state store
 export const liveState = writable<DashboardState | null>(null);
 
+// Configurable polling interval
+export const pollInterval = writable<number>(5000);
+
 // Poll live state every 5 seconds
 export function startPolling(intervalMs = 5000): () => void {
   const interval = setInterval(async () => {
     try {
       const state = await api.getState();
       liveState.set(state);
-    } catch (err) {
-      console.error("Poll error:", err);
+    } catch {
+      // Poll failure is expected occasionally
     }
   }, intervalMs);
 
@@ -194,8 +187,8 @@ export function startPolling(intervalMs = 5000): () => void {
   api
     .getState()
     .then((state) => liveState.set(state))
-    .catch((err) => {
-      console.error("Initial state fetch failed:", err);
+    .catch(() => {
+      // Initial fetch may fail if backend starting up
     });
 
   return () => clearInterval(interval);
