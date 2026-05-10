@@ -164,6 +164,37 @@ class ApiClient {
     }) as Promise<{ success: boolean }>;
   }
 
+  // === Journal API ===
+
+  async getJournalTrades(params?: { page?: number; limit?: number; symbol?: string; days?: number }): Promise<any> {
+    const q = new URLSearchParams();
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    if (params?.symbol) q.set('symbol', params.symbol);
+    if (params?.days) q.set('days', String(params.days));
+    const qs = q.toString();
+    return this.fetch(`/api/v1/journal/trades${qs ? '?' + qs : ''}`);
+  }
+
+  async getJournalCalendar(month: number, year: number): Promise<any> {
+    return this.fetch(`/api/v1/journal/calendar?month=${month}&year=${year}`);
+  }
+
+  async getJournalStats(): Promise<any> {
+    return this.fetch('/api/v1/journal/stats');
+  }
+
+  async getJournalNotes(): Promise<any> {
+    return this.fetch('/api/v1/journal/notes');
+  }
+
+  async createJournalNote(note: { trade_id?: string; content: string; tags?: string[] }): Promise<any> {
+    return this.fetch('/api/v1/journal/notes', {
+      method: 'POST',
+      body: JSON.stringify(note),
+    });
+  }
+
   isAuthenticated(): boolean {
     return !!this.token;
   }

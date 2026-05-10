@@ -121,3 +121,15 @@ CREATE TABLE IF NOT EXISTS settings (
  payload_json TEXT,
  created_at INTEGER
 );
+
+-- Trade Journal Notes (agent-authored reflections)
+CREATE TABLE IF NOT EXISTS journal_notes (
+ id TEXT PRIMARY KEY,
+ trade_id TEXT,
+ content TEXT,
+ tags TEXT,
+ created_by TEXT,
+ created_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_journal_notes_trade ON journal_notes(trade_id);
+CREATE INDEX IF NOT EXISTS idx_journal_notes_created ON journal_notes(created_at);

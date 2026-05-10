@@ -694,6 +694,183 @@ export default {
         return jsonResponse(env, { signals, timestamp: Date.now() });
       }
 
+      // ============================================================
+      // Journal API — trades, calendar, notes
+      // ============================================================
+
+      // GET /api/v1/journal/trades — executed trades with P&L
+      if (path === "/api/v1/journal/trades" && request.method === "GET") {
+        const page = parseInt(url.searchParams.get('page') || '1');
+        const limit = parseInt(url.searchParams.get('limit') || '50');
+        const symbol = url.searchParams.get('symbol') || '';
+        const days = parseInt(url.searchParams.get('days') || '90');
+        const offset = (page - 1) * limit;
+
+        try {
+          let sql = `SELECT id, strategy_id, exchange, symbol, side, entry_price, exit_price, size, pnl, fee, regime, agent_reasoning_json, paper, created_at
+                     FROM trade_journal WHERE created_at > ?`;
+          const params: (string | number)[] = [Date.now() - days * 86400000];
+
+          if (symbol) {
+            sql += ` AND symbol = ?`;
+            params.push(symbol.toUpperCase());
+          }
+
+          // Count total
+          const countSql = sql.replace(/SELECT .* FROM/, 'SELECT COUNT(*) as total FROM').split(' ORDER')[0];
+          const countResult = await tursoQuery(env, countSql, params);
+          const total = parseInt(countResult?.rows?.[0]?.[0]?.value || '0');
+
+          sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+          params.push(limit, offset);
+
+          const result = await tursoQuery(env, sql, params);
+          const trades = result?.rows?.map((r: any[]) => ({
+            id: r[0]?.value, strategy_id: r[1]?.value, exchange: r[2]?.value,
+            symbol: r[3]?.value, side: r[4]?.value, entry_price: parseFloat(r[5]?.value || '0'),
+            exit_price: r[6]?.value ? parseFloat(r[6].value) : null,
+            size: parseFloat(r[7]?.value || '0'), pnl: r[8]?.value ? parseFloat(r[8].value) : null,
+            fee: parseFloat(r[9]?.value || '0'), regime: r[10]?.value,
+            reasoning: r[11]?.value, paper: !!r[12]?.value,
+            created_at: parseInt(r[13]?.value || '0'),
+          })) || [];
+
+          return jsonResponse(env, { trades, total, page, limit, pages: Math.ceil(total / limit) });
+        } catch (e) {
+          logError('Journal trades query failed:', e);
+          return jsonResponse(env, { trades: [], total: 0, error: 'Query failed' });
+        }
+      }
+
+      // GET /api/v1/journal/calendar — daily P&L for a month
+      if (path === "/api/v1/journal/calendar" && request.method === "GET") {
+        const year = parseInt(url.searchParams.get('year') || String(new Date().getFullYear()));
+        const month = parseInt(url.searchParams.get('month') || String(new Date().getMonth() + 1));
+
+        const startOfMonth = new Date(year, month - 1, 1).getTime();
+        const endOfMonth = new Date(year, month, 0, 23, 59, 59).getTime();
+
+        try {
+          const result = await tursoQuery(env,
+            `SELECT
+               CAST(strftime('%d', created_at / 1000, 'unixepoch') AS INTEGER) as day,
+               SUM(pnl) as day_pnl,
+               COUNT(*) as trade_count
+             FROM trade_journal
+             WHERE created_at >= ? AND created_at <= ? AND pnl IS NOT NULL
+             GROUP BY day ORDER BY day`,
+            [startOfMonth, endOfMonth]
+          );
+
+          const days: Record<number, { day: number; pnl: number; trades: number }> = {};
+          for (const row of (result?.rows || [])) {
+            const d = parseInt(row[0]?.value || '0');
+            days[d] = {
+              day: d,
+              pnl: parseFloat(row[1]?.value || '0'),
+              trades: parseInt(row[2]?.value || '0'),
+            };
+          }
+
+          // Calculate monthly summary
+          const allPnls = Object.values(days);
+          const totalPnl = allPnls.reduce((s: number, d: any) => s + d.pnl, 0);
+          const totalTrades = allPnls.reduce((s: number, d: any) => s + d.trades, 0);
+
+          return jsonResponse(env, {
+            year, month,
+            days,
+            summary: {
+              total_pnl: totalPnl,
+              total_trades: totalTrades,
+              best_day: allPnls.length ? Math.max(...allPnls.map((d: any) => d.pnl)) : 0,
+              worst_day: allPnls.length ? Math.min(...allPnls.map((d: any) => d.pnl)) : 0,
+              trading_days: allPnls.length,
+            }
+          });
+        } catch (e) {
+          logError('Journal calendar query failed:', e);
+          return jsonResponse(env, { year, month, days: {}, summary: { total_pnl: 0, total_trades: 0 } });
+        }
+      }
+
+      // GET /api/v1/journal/stats — overall journal stats
+      if (path === "/api/v1/journal/stats" && request.method === "GET") {
+        try {
+          const result = await tursoQuery(env,
+            `SELECT
+               COUNT(*) as total_trades,
+               SUM(pnl) as total_pnl,
+               AVG(pnl) as avg_pnl,
+               SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
+               SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
+               MAX(pnl) as best_trade,
+               MIN(pnl) as worst_trade,
+               COUNT(DISTINCT symbol) as symbols_traded,
+               COUNT(DISTINCT DATE(created_at / 1000, 'unixepoch')) as trading_days
+             FROM trade_journal`
+          );
+          const r = result?.rows?.[0];
+          return jsonResponse(env, {
+            total_trades: parseInt(r?.[0]?.value || '0'),
+            total_pnl: parseFloat(r?.[1]?.value || '0'),
+            avg_pnl: parseFloat(r?.[2]?.value || '0'),
+            winning_trades: parseInt(r?.[3]?.value || '0'),
+            losing_trades: parseInt(r?.[4]?.value || '0'),
+            best_trade: parseFloat(r?.[5]?.value || '0'),
+            worst_trade: parseFloat(r?.[6]?.value || '0'),
+            symbols_traded: parseInt(r?.[7]?.value || '0'),
+            trading_days: parseInt(r?.[8]?.value || '0'),
+          });
+        } catch (e) {
+          logError('Journal stats query failed:', e);
+          return jsonResponse(env, { total_trades: 0, total_pnl: 0 });
+        }
+      }
+
+      // GET /api/v1/journal/notes — list journal notes
+      if (path === "/api/v1/journal/notes" && request.method === "GET") {
+        try {
+          const result = await tursoQuery(env,
+            `SELECT n.id, n.trade_id, n.content, n.tags, n.created_by, n.created_at,
+                    t.symbol, t.side, t.pnl
+             FROM journal_notes n
+             LEFT JOIN trade_journal t ON n.trade_id = t.id
+             ORDER BY n.created_at DESC LIMIT 100`
+          );
+          const notes = result?.rows?.map((r: any[]) => ({
+            id: r[0]?.value, trade_id: r[1]?.value, content: r[2]?.value,
+            tags: r[3]?.value ? r[3].value.split(',') : [],
+            created_by: r[4]?.value, created_at: parseInt(r[5]?.value || '0'),
+            trade: r[1]?.value ? {
+              symbol: r[6]?.value, side: r[7]?.value, pnl: r[8]?.value ? parseFloat(r[8].value) : null,
+            } : null,
+          })) || [];
+          return jsonResponse(env, { notes });
+        } catch (e) {
+          logError('Journal notes query failed:', e);
+          return jsonResponse(env, { notes: [] });
+        }
+      }
+
+      // POST /api/v1/journal/notes — create a journal note (agent writes)
+      if (path === "/api/v1/journal/notes" && request.method === "POST") {
+        try {
+          const body: any = await request.json();
+          const id = crypto.randomUUID();
+          const now = Date.now();
+          await tursoExecute(env,
+            `INSERT INTO journal_notes (id, trade_id, content, tags, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+            [id, body.trade_id || '', body.content || '', (body.tags || []).join(','), 'agent', now]
+          );
+          await audit(env, ctx, 'journal_note_created', { note_id: id, trade_id: body.trade_id });
+          return jsonResponse(env, { success: true, id, created_at: now });
+        } catch (e: any) {
+          logError('Journal note creation failed:', e);
+          return jsonResponse(env, { error: e.message }, 500);
+        }
+      }
+
       return jsonResponse(env, { error: "Not found" }, 404);
     } catch (err) {
       logError("API Error:", err);
