@@ -114,3 +114,10 @@ CREATE TABLE IF NOT EXISTS external_signals (
 );
 CREATE INDEX IF NOT EXISTS idx_ext_signals_dept ON external_signals(department);
 CREATE INDEX IF NOT EXISTS idx_ext_signals_consumed ON external_signals(consumed);
+
+-- Settings storage
+CREATE TABLE IF NOT EXISTS settings (
+ id TEXT PRIMARY KEY,
+ payload_json TEXT,
+ created_at INTEGER
+);

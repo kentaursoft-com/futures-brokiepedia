@@ -3,27 +3,6 @@ main = "src/index.ts"
 compatibility_date = "2024-01-15"
 account_id = "c65f65732da865ff4ac95eb6083a1f74"
 
-# Durable Objects (for WebSocket sessions if needed later)
-# [[durable_objects.bindings]]
-# name = "SESSIONS"
-# class_name = "Session"
-
-# KV Namespaces - Create via: wrangler kv:namespace create "LIVE_STATE"
-[[kv_namespaces]]
-binding = "LIVE_STATE"
-id = "5a4fad79637d40e8a60ae1d2726bd331"
-
-# D1 Database - Create via: wrangler d1 create futures_audit
-[[d1_databases]]
-binding = "AUDIT_DB"
-database_name = "futures_audit"
-database_id = "c7d20ca7-b8c5-4b35-8446-e7e4146425bb"
-
-# Queues - Create via: wrangler queues create futures-agent-tasks
-# [[queues.producers]]
-# binding = "AGENT_QUEUE"
-# queue = "futures-agent-tasks"
-
 # Environment Variables (non-sensitive)
 [vars]
 DAEMON_URL = "https://daemon.brokiepedia.com"
@@ -33,6 +12,7 @@ DAEMON_URL = "https://daemon.brokiepedia.com"
 # TELEGRAM_BOT_TOKEN
 # BINANCE_API_KEY
 # BINANCE_SECRET_KEY
+# TURSO_DB_URL
 # TURSO_DB_TOKEN
 # JWT_SECRET
 # AUTH_PASSWORD_HASH
