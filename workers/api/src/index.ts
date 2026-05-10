@@ -19,6 +19,108 @@ export interface Env {
   ALLOWED_ORIGIN?: string;
 }
 
+// ============================================================
+// Turso HTTP client helpers (department API key management)
+// ============================================================
+
+async function tursoQuery(env: Env, sql: string, params: (string | number)[] = []): Promise<any> {
+  const url = env.TURSO_DB_URL.replace('libsql://', 'https://');
+  const resp = await fetch(`${url}/v2/pipeline`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.TURSO_DB_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      requests: [{
+        type: 'execute',
+        stmt: { sql, args: params.map(p => ({ type: typeof p === 'string' ? 'text' : 'integer', value: String(p) })) }
+      }]
+    })
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    log('error', 'Turso query failed', { sql: sql.substring(0, 60), status: resp.status, error: text.substring(0, 200) });
+    return null;
+  }
+  const data: any = await resp.json();
+  const result = data?.results?.[0]?.response?.result;
+  return result || null;
+}
+
+async function tursoExecute(env: Env, sql: string, params: (string | number)[] = []): Promise<boolean> {
+  const result = await tursoQuery(env, sql, params);
+  return result !== null;
+}
+
+// ============================================================
+// Department API Key validation & generation
+// ============================================================
+
+const VALID_DEPARTMENTS = ['quantitative', 'technical', 'sentiment', 'fundamental', 'statistical', 'qualitative'] as const;
+
+/** Simple hash function for API keys (not cryptographic, sufficient for lookups) */
+function hashApiKey(key: string): string {
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < key.length; i++) {
+    bytes[i % 32] ^= key.charCodeAt(i);
+    bytes[(i + 1) % 32] ^= (key.charCodeAt(i) << 3) | (key.charCodeAt(i) >> 5);
+  }
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Generate a new department API key */
+function generateDepartmentApiKey(department: string): { key: string; prefix: string; hash: string } {
+  const slug = department.toLowerCase();
+  if (!VALID_DEPARTMENTS.includes(slug as any)) {
+    throw new Error(`Invalid department: ${department}`);
+  }
+  const randomBytes = new Uint8Array(24);
+  crypto.getRandomValues(randomBytes);
+  const randomPart = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const key = `dpt_${slug}_${randomPart}`;
+  const prefix = key.substring(0, 16) + '...';
+  return { key, prefix, hash: hashApiKey(key) };
+}
+
+/** Validate an API key against Turso, with KV caching */
+async function validateDepartmentApiKey(env: Env, ctx: ExecutionContext, apiKey: string): Promise<{ valid: boolean; department?: string; keyId?: string }> {
+  const hash = hashApiKey(apiKey);
+
+  // Check KV cache first
+  const cached = await env.LIVE_STATE.get('dept_key_cache_' + hash, 'json') as any;
+  if (cached && cached.valid && cached.expires > Date.now()) {
+    return { valid: true, department: cached.department, keyId: cached.keyId };
+  }
+
+  // Query Turso
+  const result = await tursoQuery(env,
+    `SELECT id, department FROM department_api_keys WHERE api_key_hash = ? AND is_active = 1 LIMIT 1`,
+    [hash]
+  );
+
+  if (result && result.rows && result.rows.length > 0) {
+    const row = result.rows[0];
+    const dept = row[1]?.value || '';
+    const keyId = row[0]?.value || '';
+
+    // Cache in KV for 5 minutes
+    await env.LIVE_STATE.put('dept_key_cache_' + hash, JSON.stringify({
+      valid: true, department: dept, keyId, expires: Date.now() + 300000
+    }), { expirationTtl: 300 });
+
+    // Update last_used_at (fire-and-forget)
+    ctx.waitUntil(tursoExecute(env,
+      `UPDATE department_api_keys SET last_used_at = ? WHERE id = ?`,
+      [Date.now(), keyId]
+    ));
+
+    return { valid: true, department: dept, keyId };
+  }
+
+  return { valid: false };
+}
+
 function getCorsHeaders(env: Env): Record<string, string> {
   const origin = env.ALLOWED_ORIGIN || "https://futures.brokiepedia.com";
   return {
@@ -84,6 +186,13 @@ const PUBLIC_ENDPOINTS = [
   "/api/v1/paper-trading/history",
   "/api/v1/exchanges",
   "/api/v1/exchanges/balances",
+  // Phase 6 — Department external signals (API key auth, not session)
+  "/api/v1/departments/quantitative/signal",
+  "/api/v1/departments/technical/signal",
+  "/api/v1/departments/sentiment/signal",
+  "/api/v1/departments/fundamental/signal",
+  "/api/v1/departments/statistical/signal",
+  "/api/v1/departments/qualitative/signal",
 ];
 
 function isPublicEndpoint(path: string): boolean {
@@ -1303,6 +1412,240 @@ export default {
         }
 
         return jsonResponse(env, { candles: [] });
+      }
+
+      // ============================================================
+      // Phase 6: Department External Signal API
+      // ============================================================
+
+      // POST /api/v1/departments/:department/signal — Discord agents submit signals
+      const deptSignalMatch = path.match(/^\/api\/v1\/departments\/(quantitative|technical|sentiment|fundamental|statistical|qualitative)\/signal$/);
+      if (deptSignalMatch && request.method === "POST") {
+        const department = deptSignalMatch[1];
+        const departmentLabel = department.charAt(0).toUpperCase() + department.slice(1);
+
+        // Validate API key
+        const apiKey = request.headers.get("X-Api-Key") || request.headers.get("x-api-key");
+        if (!apiKey) {
+          return jsonResponse(env, { error: "Missing X-Api-Key header" }, 401);
+        }
+
+        const validation = await validateDepartmentApiKey(env, ctx, apiKey);
+        if (!validation.valid || validation.department?.toLowerCase() !== department) {
+          log('warn', 'Invalid key for department', { dept: department, keyDept: validation.department });
+          return jsonResponse(env, { error: "Invalid API key for this department" }, 403);
+        }
+
+        // Parse request body
+        let body: any;
+        try {
+          body = await request.json();
+        } catch {
+          return jsonResponse(env, { error: "Invalid JSON body" }, 400);
+        }
+
+        // Validate body
+        const direction = (body.direction || '').toLowerCase();
+        if (!['long', 'short', 'flat'].includes(direction)) {
+          return jsonResponse(env, { error: "direction must be 'long', 'short', or 'flat'" }, 400);
+        }
+
+        const confidence = parseFloat(body.confidence);
+        if (isNaN(confidence) || confidence < 0 || confidence > 1) {
+          return jsonResponse(env, { error: "confidence must be a number between 0 and 1" }, 400);
+        }
+
+        // Build signal payload
+        const signalPayload = {
+          department: departmentLabel,
+          api_key_id: validation.keyId,
+          direction,
+          confidence,
+          symbol: (body.symbol || 'BTCUSDT').toUpperCase(),
+          timeframe: body.timeframe || '1h',
+          reasoning: (body.reasoning || '').substring(0, 2000),
+          source: body.source || 'discord',
+        };
+
+        // Log the signal
+        log('info', 'External signal received', { dept: departmentLabel, direction, symbol: signalPayload.symbol, confidence });
+
+        // Forward to VPS daemon
+        let daemonResult = null;
+        if (env.DAEMON_URL) {
+          try {
+            const daemonRes = await fetch(`${env.DAEMON_URL}/api/v1/departments/signal`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(env.VPS_INTERNAL_KEY ? { 'X-Internal-Key': env.VPS_INTERNAL_KEY } : {}),
+              },
+              body: JSON.stringify(signalPayload),
+            });
+            if (daemonRes.ok) {
+              daemonResult = await daemonRes.json();
+            } else {
+              log('error', 'Daemon rejected signal', { status: daemonRes.status });
+            }
+          } catch (e: any) {
+            log('error', 'Daemon unreachable for signal', { error: e.message });
+          }
+        }
+
+        // Store in KV as fallback
+        const signalsKey = `dept_signals_${department}`;
+        const existingSignals = await env.LIVE_STATE.get(signalsKey, 'json') || [];
+        const signalList = Array.isArray(existingSignals) ? existingSignals : [];
+        signalList.push({
+          ...signalPayload,
+          timestamp: Date.now(),
+          delivered: !!daemonResult,
+        });
+        // Keep last 10
+        if (signalList.length > 10) signalList.shift();
+        await env.LIVE_STATE.put(signalsKey, JSON.stringify(signalList), { expirationTtl: 86400 });
+
+        // Log to D1 audit
+        ctx.waitUntil(
+          env.AUDIT_DB.prepare(
+            `INSERT INTO audit_log (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)`
+          )
+            .bind(crypto.randomUUID(), 'external_signal', JSON.stringify({
+              department: departmentLabel, direction, symbol: signalPayload.symbol, confidence, delivered: !!daemonResult
+            }), Date.now())
+            .run()
+            .catch(() => {})
+        );
+
+        return jsonResponse(env, {
+          success: true,
+          message: `Signal submitted to ${departmentLabel}`,
+          department: departmentLabel,
+          direction,
+          confidence,
+          delivered_to_daemon: !!daemonResult,
+          signal_id: daemonResult?.signal_id || null,
+          timestamp: Date.now(),
+        });
+      }
+
+      // POST /api/v1/departments/keys — Generate a new API key (admin only)
+      if (path === "/api/v1/departments/keys" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { body = {}; }
+
+        const department = (body.department || '').toLowerCase();
+        if (!['quantitative', 'technical', 'sentiment', 'fundamental', 'statistical', 'qualitative'].includes(department)) {
+          return jsonResponse(env, { error: `Invalid department. Must be one of: quantitative, technical, sentiment, fundamental, statistical, qualitative` }, 400);
+        }
+
+        const label = body.label || `${department.charAt(0).toUpperCase() + department.slice(1)} Discord Agent`;
+
+        // Generate key
+        const randomBytes = new Uint8Array(24);
+        crypto.getRandomValues(randomBytes);
+        const randomPart = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        const key = `dpt_${department}_${randomPart}`;
+        const prefix = key.substring(0, 16) + '...';
+
+        // Simple hash (XOR-based, suitable for this use case)
+        const hashBytes = new Uint8Array(32);
+        for (let i = 0; i < key.length; i++) {
+          hashBytes[i % 32] ^= key.charCodeAt(i);
+        }
+        const hash = Array.from(hashBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        const id = crypto.randomUUID();
+        const now = Date.now();
+
+        // Store in Turso
+        const stored = await tursoExecute(env,
+          `INSERT INTO department_api_keys (id, department, label, api_key_hash, api_key_prefix, is_active, created_by, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+          [id, department, label, hash, prefix, 'admin', now]
+        );
+
+        if (!stored) {
+          return jsonResponse(env, { error: "Failed to store API key" }, 500);
+        }
+
+        log('info', 'Department API key generated', { department, label, prefix });
+
+        return jsonResponse(env, {
+          success: true,
+          message: "API key generated. Store it securely — it won't be shown again.",
+          key,  // Only shown once
+          prefix,
+          id,
+          department,
+          label,
+          created_at: now,
+        });
+      }
+
+      // GET /api/v1/departments/keys — List all API keys (admin only)
+      if (path === "/api/v1/departments/keys" && request.method === "GET") {
+        const result = await tursoQuery(env,
+          `SELECT id, department, label, api_key_prefix, is_active, created_by, last_used_at, created_at FROM department_api_keys ORDER BY created_at DESC`
+        );
+
+        if (!result || !result.rows) {
+          return jsonResponse(env, { keys: [] });
+        }
+
+        const keys = result.rows.map((row: any[]) => ({
+          id: row[0]?.value || '',
+          department: row[1]?.value || '',
+          label: row[2]?.value || '',
+          prefix: row[3]?.value || '',
+          is_active: !!row[4]?.value,
+          created_by: row[5]?.value || '',
+          last_used_at: row[6]?.value ? parseInt(row[6].value) : null,
+          created_at: parseInt(row[7]?.value || '0'),
+        }));
+
+        return jsonResponse(env, { keys });
+      }
+
+      // DELETE /api/v1/departments/keys/:id — Revoke a key (admin only)
+      const deleteKeyMatch = path.match(/^\/api\/v1\/departments\/keys\/([a-f0-9-]+)$/);
+      if (deleteKeyMatch && request.method === "DELETE") {
+        const keyId = deleteKeyMatch[1];
+        await tursoExecute(env,
+          `UPDATE department_api_keys SET is_active = 0 WHERE id = ?`,
+          [keyId]
+        );
+
+        // Clear any KV cache entries for this key
+        log('info', 'Department API key revoked', { keyId });
+
+        return jsonResponse(env, { success: true, message: "API key revoked" });
+      }
+
+      // GET /api/v1/departments/signals/pending — Check latest signals per dept
+      if (path === "/api/v1/departments/signals/pending") {
+        const depts = ['quantitative', 'technical', 'sentiment', 'fundamental', 'statistical', 'qualitative'];
+        const signals: Record<string, any[]> = {};
+        
+        for (const dept of depts) {
+          const stored = await env.LIVE_STATE.get(`dept_signals_${dept}`, 'json') as any[];
+          if (stored && stored.length > 0) {
+            signals[dept] = stored.slice(-3).map(s => ({
+              direction: s.direction,
+              confidence: s.confidence,
+              symbol: s.symbol,
+              timeframe: s.timeframe,
+              reasoning: s.reasoning?.substring(0, 100),
+              source: s.source,
+              timestamp: s.timestamp,
+              delivered: s.delivered,
+            }));
+          }
+        }
+
+        return jsonResponse(env, {
+          signals,
+          timestamp: Date.now(),
+        });
       }
 
       return jsonResponse(env, { error: "Not found" }, 404);

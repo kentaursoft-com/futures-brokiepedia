@@ -11,6 +11,7 @@ from .database.turso_client import TursoClient
 from .ingestion.binance_ws import BinanceFuturesIngestion
 from .ingestion.questdb_client import QuestDBClient
 from .agents.departments import DepartmentAgents
+from .agents.external_signals import ExternalSignalStore
 from .agents.regime_classifier import MarketRegimeClassifier
 from .agents.back_office import BookKeeper, JournalingAgent, ResearcherAgent, HealthMonitor
 from .exchanges.exchange_layer import ExchangeAbstractionLayer
@@ -67,6 +68,18 @@ class TradingDaemon:
             logger.warning(f"Turso not available: {e}")
             self.turso = None
         
+        # External Signal Store (Phase 6 - Discord agent integration)
+        self.signal_store = ExternalSignalStore(turso_client=self.turso)
+        try:
+            loaded = asyncio.get_event_loop().run_until_complete(self.signal_store.load_pending_from_db())
+            if loaded > 0:
+                logger.info(f"✅ Loaded {loaded} pending external signals from DB")
+        except Exception as e:
+            logger.warning(f"Could not load pending signals: {e}")
+        logger.info("✅ External signal store ready")
+
+        # QuestDB
+        
         # QuestDB
         self.questdb = QuestDBClient(
             host=settings.database.QUESTDB_HOST,
@@ -91,10 +104,11 @@ class TradingDaemon:
         self.analytics = PerformanceAnalytics()
         logger.info("✅ Performance analytics ready")
         
-        # AI Departments
+        # AI Departments (with external signal injection)
         self.departments = DepartmentAgents(
             api_key=settings.ai.DEEPSEEK_API_KEY,
-            base_url=settings.ai.DEEPSEEK_BASE_URL
+            base_url=settings.ai.DEEPSEEK_BASE_URL,
+            signal_store=self.signal_store
         )
         logger.info("✅ 6 Department agents initialized (DeepSeek V4 Pro)")
         
@@ -122,11 +136,12 @@ class TradingDaemon:
         # Initial state update
         self._update_dashboard_state()
         
-        # Set daemon refs for API server
+        # Set daemon refs for API server (including signal store)
         set_daemon_refs({
             'execution': self.execution,
             'analytics': self.analytics,
-            'turso': self.turso
+            'turso': self.turso,
+            'signal_store': self.signal_store
         })
         
     def _update_dashboard_state(self):

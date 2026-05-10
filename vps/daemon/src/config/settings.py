@@ -44,9 +44,11 @@ class DatabaseConfig:
 @dataclass
 class AIConfig:
     DEEPSEEK_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     FAST_MODEL: str = "deepseek-chat"
     DEEP_MODEL: str = "deepseek-reasoner"
+    DEFAULT_PROVIDER: str = "deepseek"
     LANGSMITH_TRACING: bool = True
     LANGSMITH_API_KEY: str = ""
 
@@ -69,6 +71,7 @@ class Settings:
         )
         self.ai = AIConfig(
             DEEPSEEK_API_KEY=os.getenv('DEEPSEEK_API_KEY', ''),
+            OPENROUTER_API_KEY=os.getenv('OPENROUTER_API_KEY', ''),
             LANGSMITH_API_KEY=os.getenv('LANGCHAIN_API_KEY', ''),
             LANGSMITH_TRACING=os.getenv('LANGCHAIN_TRACING_V2', 'false').lower() == 'true'
         )

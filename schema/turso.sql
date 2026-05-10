@@ -81,3 +81,36 @@ CREATE INDEX IF NOT EXISTS idx_trade_journal_created ON trade_journal(created_at
 CREATE INDEX IF NOT EXISTS idx_trade_journal_strategy ON trade_journal(strategy_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_timestamp ON ledger(timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+-- Department API Keys (Phase 6 - External Agent Integration)
+CREATE TABLE IF NOT EXISTS department_api_keys (
+ id TEXT PRIMARY KEY,
+ department TEXT NOT NULL,
+ label TEXT,
+ api_key_hash TEXT NOT NULL,
+ api_key_prefix TEXT NOT NULL,
+ is_active INTEGER DEFAULT 1,
+ created_by TEXT,
+ last_used_at INTEGER,
+ created_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_dept_api_keys_dept ON department_api_keys(department);
+CREATE INDEX IF NOT EXISTS idx_dept_api_keys_active ON department_api_keys(is_active);
+
+-- External Agent Signals (submitted by Discord agents)
+CREATE TABLE IF NOT EXISTS external_signals (
+ id TEXT PRIMARY KEY,
+ department TEXT NOT NULL,
+ api_key_id TEXT,
+ direction TEXT NOT NULL, -- long | short | flat
+ confidence REAL,
+ symbol TEXT,
+ timeframe TEXT,
+ reasoning TEXT,
+ source TEXT DEFAULT 'discord',
+ consumed INTEGER DEFAULT 0, -- 0=pending, 1=consumed by LangGraph
+ consumed_at INTEGER,
+ created_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_ext_signals_dept ON external_signals(department);
+CREATE INDEX IF NOT EXISTS idx_ext_signals_consumed ON external_signals(consumed);

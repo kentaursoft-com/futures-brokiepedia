@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from .middleware import RateLimitMiddleware, LoggingMiddleware
+from ..agents.external_signals import ExternalSignalStore, validate_signal_body
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,99 @@ def update_state(key: str, value):
 def set_daemon_refs(refs: dict):
     """Set references to daemon components."""
     daemon_refs.update(refs)
+
+# === AI Endpoints ===
+
+@app.get("/api/v1/ai/health")
+async def ai_health():
+    """Check AI model health."""
+    from ..ai.router import AIModelRouter
+    router = AIModelRouter()
+    return router.health_check()
+
+@app.post("/api/v1/ai/analyze")
+async def ai_analyze(request: dict):
+    """Get AI market analysis."""
+    from ..ai.router import AIModelRouter
+    router = AIModelRouter()
+    
+    result = router.analyze_market(
+        symbol=request.get('symbol', 'BTCUSDT'),
+        price=request.get('price', 0.0),
+        indicators=request.get('indicators', {}),
+        provider=request.get('provider')
+    )
+    
+    if result:
+        return {'success': True, 'analysis': result}
+    return {'success': False, 'error': 'AI analysis failed'}
+
+# === Backup Endpoints ===
+
+@app.post("/api/v1/backup")
+async def create_backup():
+    """Create a manual backup."""
+    from ..database.backup import BackupManager
+    manager = BackupManager()
+    path = manager.create_backup('manual')
+    
+    if path:
+        return {'success': True, 'path': path}
+    return {'success': False, 'error': 'Backup failed'}
+
+@app.get("/api/v1/backups")
+async def list_backups():
+    """List available backups."""
+    from ..database.backup import BackupManager
+    manager = BackupManager()
+    return {
+        'backups': manager.list_backups()[:20],
+        'status': manager.get_backup_status()
+    }
+
+# === Phase 6: External Signal Endpoints ===
+
+@app.post("/api/v1/departments/signal")
+async def ingest_external_signal(request: dict):
+    """Ingest an external signal from Discord agent (via Cloudflare Worker)."""
+    signal_store = daemon_refs.get('signal_store')
+    if not signal_store:
+        raise HTTPException(status_code=503, detail="Signal store not available")
+
+    # Validate body
+    error = validate_signal_body(request)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    try:
+        entry = await signal_store.ingest_signal(request)
+        logger.info(f"Ingested external signal: {entry['department']} → {entry['direction']}")
+        return {"success": True, "signal_id": entry['id'], "department": entry['department']}
+    except Exception as e:
+        logger.error(f"Failed to ingest external signal: {e}")
+        raise HTTPException(status_code=500, detail="Failed to ingest signal")
+
+
+@app.get("/api/v1/departments/signals/pending")
+async def get_pending_signals():
+    """Get all pending external signals."""
+    signal_store = daemon_refs.get('signal_store')
+    if not signal_store:
+        return {"departments": {}, "total": 0}
+
+    pending = signal_store.get_all_pending()
+    total = sum(len(signals) for signals in pending.values())
+    return {
+        "departments": {
+            dept: [{"id": s["id"], "direction": s["direction"],
+                    "confidence": s["confidence"], "symbol": s["symbol"],
+                    "timeframe": s["timeframe"], "reasoning": s["reasoning"][:100]}
+                   for s in signals]
+            for dept, signals in pending.items()
+        },
+        "total": total
+    }
+
 
 def start_api_server(host: str = "0.0.0.0", port: int = 8080):
     """Start the API server."""
