@@ -49,6 +49,10 @@ export interface DashboardState {
   positions: Position[];
   activeStrategy: Strategy | null;
   health: SystemHealth;
+  binance_ws_connected?: boolean;
+  langgraph_running?: boolean;
+  agents_initialized?: boolean;
+  evolution_loop_running?: boolean;
 }
 
 export interface SystemHealth {

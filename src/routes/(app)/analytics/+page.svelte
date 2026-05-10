@@ -20,11 +20,13 @@
 	let analytics: any = null;
 	let loading = true;
 	let error: string | null = null;
+	let maxTradeCount = 1;
 	
 	async function loadAnalytics() {
 		try {
 			loading = true;
 			analytics = await api.getAnalytics();
+			maxTradeCount = analytics?.tradeDistribution?.length ? Math.max(...analytics.tradeDistribution.map((d: any) => d.count), 1) : 1;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load analytics';
 			console.error('Analytics load error:', err);
@@ -159,7 +161,7 @@
 										<div class="flex items-center gap-3">
 											<span class="text-sm w-16">${item.range}</span>
 											<div class="flex-1 h-6 bg-background rounded-full overflow-hidden">
-												<div class="h-full bg-primary rounded-full flex items-center justify-end px-2" style="width: {(item.count / Math.max(...analytics.tradeDistribution.map(d => d.count))) * 100}%">
+												<div class="h-full bg-primary rounded-full flex items-center justify-end px-2" style="width: {(item.count / maxTradeCount) * 100}%">
 													<span class="text-xs">{item.count}</span>
 												</div>
 											</div>

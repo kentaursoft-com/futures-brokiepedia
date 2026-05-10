@@ -107,7 +107,7 @@
 		}
 		
 		let atrValue = trSum / period;
-		atr.push({ time: data[period].time, value: atrValue });
+		atr.push({ time: data[period].time as any, value: atrValue });
 		
 		for (let i = period + 1; i < data.length; i++) {
 			const tr = Math.max(
@@ -116,7 +116,7 @@
 				Math.abs(data[i].low - data[i - 1].close)
 			);
 			atrValue = (atrValue * (period - 1) + tr) / period;
-			atr.push({ time: data[i].time, value: atrValue });
+			atr.push({ time: data[i].time as any, value: atrValue });
 		}
 		
 		return atr;
@@ -195,18 +195,18 @@
 		const unsubscribe = binanceWS.subscribe(state => {
 			if (state.candles.length < 50) return;
 			
-			const closes = state.candles.map(c => ({ time: c.time, value: c.close }));
+			const closes = state.candles.map(c => ({ time: c.time as any, value: c.close }));
 			
 			// Update RSI
 			const rsi = calculateRSI(closes);
-			if (rsi.length > 0) rsiSeries.setData(rsi);
+			if (rsi.length > 0) rsiSeries.setData(rsi as any);
 			
 			// Update MACD
 			const macd = calculateMACD(closes);
 			if (macd.macd.length > 0) {
 				macdLineSeries.setData(macd.macd);
 				macdSignalSeries.setData(macd.signal);
-				macdHistSeries.setData(macd.histogram);
+				macdHistSeries.setData(macd.histogram as any);
 			}
 			
 			// Update ATR

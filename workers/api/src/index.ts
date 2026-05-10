@@ -1,4 +1,4 @@
-import type { Queue } from "@cloudflare/workers-types";
+import type { Queue, ExecutionContext } from "@cloudflare/workers-types";
 
 export interface Env {
   DEEPSEEK_API_KEY: string;

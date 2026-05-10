@@ -67,6 +67,11 @@
     goto(path);
   }
   
+  function hideImg(e: Event) {
+    const el = e.target as HTMLElement;
+    if (el) el.style.display = 'none';
+  }
+  
   function logout() {
     document.cookie = 'session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict';
     window.location.href = '/auth';
@@ -153,7 +158,7 @@
         <div class="flex items-center gap-5 px-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
           {#each tickerSymbols as { symbol, label, icon } (symbol)}
             <div class="flex items-center gap-2 flex-shrink-0">
-              <img src={icon} alt={label} class="w-4 h-4 rounded-full opacity-80" on:error={(e) => { e.target.style.display = 'none'; }} />
+              <img src={icon} alt={label} class="w-4 h-4 rounded-full opacity-80" on:error={hideImg} />
               <span class="text-xs font-medium text-white/70 font-sans">{label}</span>
               <span class="text-sm font-mono font-semibold text-white/90">${tickerPrices[symbol]?.price ?? '--'}</span>
               <span class="text-xs font-mono {tickerPrices[symbol]?.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}">

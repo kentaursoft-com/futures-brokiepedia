@@ -140,7 +140,7 @@
 		const unsubscribe = binanceWS.subscribe(state => {
 			if (activeTimeframe === '1m' && state.candles.length > 0) {
 				const latest = state.candles[state.candles.length - 1];
-				candleSeries.update(latest);
+				candleSeries.update(latest as any);
 			}
 		});
 		

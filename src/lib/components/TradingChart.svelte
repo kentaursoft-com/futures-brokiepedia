@@ -104,16 +104,16 @@
 					color: c.close >= c.open ? '#10b98180' : '#ef444480'
 				}));
 
-				candleSeries.setData(chartData);
-				volumeSeries.setData(volumeData);
+				candleSeries.setData(chartData as any);
+				volumeSeries.setData(volumeData as any);
 
 				// Calculate and update EMAs
-				const closes = state.candles.map(c => ({ time: c.time, value: c.close }));
+				const closes = state.candles.map(c => ({ time: c.time as any, value: c.close }));
 				if (closes.length >= 20) {
-					ema20Series.setData(calculateEMA(closes, 20));
+					ema20Series.setData(calculateEMA(closes, 20) as any);
 				}
 				if (closes.length >= 50) {
-					ema50Series.setData(calculateEMA(closes, 50));
+					ema50Series.setData(calculateEMA(closes, 50) as any);
 				}
 
 				chart.timeScale().fitContent();

@@ -34,7 +34,7 @@
 	
 	// Get current price from WebSocket
 	$: currentPrice = $binanceWS.lastPrice;
-	$: symbolMap: Record<string, string> = {
+	const symbolMap: Record<string, string> = {
 		'BTC-PERP': 'BTCUSDT',
 		'ETH-PERP': 'ETHUSDT',
 		'SOL-PERP': 'SOLUSDT'

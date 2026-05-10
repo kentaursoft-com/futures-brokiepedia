@@ -140,7 +140,7 @@
     </div>
     <button
       class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-      onclick={openGenerate}
+      on:click={openGenerate}
     >
       <span>＋</span>
       Generate New Key
@@ -178,7 +178,7 @@
     <GlassCard>
       <div class="text-zinc-400 text-xs font-medium uppercase tracking-wider">Pending Signals</div>
       <div class="text-2xl font-bold text-amber-400 mt-1">
-        {Object.values(signals).reduce((a: number, b: any[]) => a + b.length, 0)}
+        {Object.values(signals).reduce((a, b) => a + (b || []).length, 0)}
       </div>
     </GlassCard>
   </div>
@@ -193,7 +193,7 @@
         <div class="flex items-center justify-between mb-3">
           <span class="text-white font-semibold text-sm">{DEPARTMENT_LABELS[dept] || dept}</span>
           <div class="flex gap-2">
-            <StatusBadge status={activeKeys.length > 0 ? 'active' : 'inactive'}>
+            <StatusBadge status={activeKeys.length > 0 ? 'online' : 'offline'}>
               {activeKeys.length} key{activeKeys.length !== 1 ? 's' : ''}
             </StatusBadge>
             {#if deptSignals.length > 0}
@@ -221,7 +221,7 @@
 
         <button
           class="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-          onclick={() => { generateDepartment = dept; openGenerate(); }}
+          on:click={() => { generateDepartment = dept; openGenerate(); }}
         >
           ＋ Add key for {dept}
         </button>
@@ -283,13 +283,13 @@
                         <div class="flex items-center justify-end gap-2">
                           <button
                             class="text-xs text-zinc-400 hover:text-white transition-colors"
-                            onclick={() => showRevokeConfirm = ''}
+                            on:click={() => showRevokeConfirm = ''}
                           >
                             Cancel
                           </button>
                           <button
                             class="text-xs text-red-400 hover:text-red-300 bg-red-500/10 px-2 py-1 rounded transition-colors"
-                            onclick={() => handleRevoke(keyItem.id)}
+                            on:click={() => handleRevoke(keyItem.id)}
                             disabled={revoking}
                           >
                             {revoking ? 'Revoking...' : 'Confirm Revoke'}
@@ -298,7 +298,7 @@
                       {:else}
                         <button
                           class="text-xs text-red-400 hover:text-red-300 transition-colors"
-                          onclick={() => showRevokeConfirm = keyItem.id}
+                          on:click={() => showRevokeConfirm = keyItem.id}
                         >
                           Revoke
                         </button>
@@ -335,13 +335,13 @@
           <div class="flex gap-3 justify-center">
             <button
               class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
-              onclick={copyKey}
+              on:click={copyKey}
             >
               {keyCopied ? '✓ Copied!' : 'Copy Key'}
             </button>
             <button
               class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
-              onclick={() => { showGenerateModal = false; }}
+              on:click={() => { showGenerateModal = false; }}
             >
               Done
             </button>
@@ -356,10 +356,10 @@
 
         <div class="space-y-4">
           <div>
-            <label class="text-zinc-400 text-xs font-medium uppercase tracking-wider block mb-1.5">
+            <label for="dept-select" class="text-zinc-400 text-xs font-medium uppercase tracking-wider block mb-1.5">
               Department
             </label>
-            <select
+            <select id="dept-select"
               class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
               bind:value={generateDepartment}
             >
@@ -369,10 +369,10 @@
             </select>
           </div>
           <div>
-            <label class="text-zinc-400 text-xs font-medium uppercase tracking-wider block mb-1.5">
+            <label for="label-input" class="text-zinc-400 text-xs font-medium uppercase tracking-wider block mb-1.5">
               Label (optional)
             </label>
-            <input
+            <input id="label-input"
               type="text"
               class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
               placeholder="e.g. Prometheus Discord Agent"
@@ -387,13 +387,13 @@
           <div class="flex gap-3 justify-end pt-2">
             <button
               class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
-              onclick={() => showGenerateModal = false}
+              on:click={() => showGenerateModal = false}
             >
               Cancel
             </button>
             <button
               class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-              onclick={handleGenerate}
+              on:click={handleGenerate}
               disabled={generating}
             >
               {generating ? 'Generating...' : 'Generate Key'}
