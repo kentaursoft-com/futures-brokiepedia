@@ -3,6 +3,7 @@
   import { liveState, api } from '$lib/api';
   import GlassCard from '$lib/components/GlassCard.svelte';
   import StatusBadge from '$lib/components/StatusBadge.svelte';
+  import { tradingMode } from '$lib/stores/tradingMode';
   
   let marketPrices: Record<string, number> = {};
   let recentActivity: any[] = [];
@@ -121,7 +122,7 @@
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
     <div class="flex items-center gap-3">
       <h1 class="text-2xl sm:text-3xl font-bold text-white/90 font-sans">Dashboard</h1>
-      <StatusBadge status={executionEnabled ? 'online' : 'error'} label={systemStatus.toUpperCase()} size="sm" />
+      <StatusBadge status={executionEnabled ? 'online' : 'error'} label={$tradingMode === 'live' ? 'LIVE' : 'PAPER'} size="sm" />
     </div>
     <div class="flex items-center gap-3">
       <!-- Connection Health Dots -->

@@ -3,49 +3,17 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { liveState, startPolling } from '$lib/api';
-  import { theme } from '$lib/stores/theme';
+  import { tradingMode, type TradingMode } from '$lib/stores/tradingMode';
   import { onMount } from 'svelte';
   import BottomNav from '$lib/components/BottomNav.svelte';
   
   let userMenuOpen = false;
   let stopPolling: (() => void) | null = null;
-  let tickerPrices: Record<string, { price: string; change: number }> = {};
-  let tickerInterval: ReturnType<typeof setInterval>;
-  
-  const tickerSymbols = [
-    { symbol: 'BTCUSDT', label: 'BTC', icon: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png' },
-    { symbol: 'ETHUSDT', label: 'ETH', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png' },
-    { symbol: 'SOLUSDT', label: 'SOL', icon: 'https://assets.coingecko.com/coins/images/4128/small/solana.png' },
-    { symbol: 'BNBUSDT', label: 'BNB', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png' },
-    { symbol: 'XRPUSDT', label: 'XRP', icon: 'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png' },
-  ];
-  
-  async function fetchTickerPrices() {
-    try {
-      const symbols = tickerSymbols.map(s => s.symbol);
-      const res = await fetch(`https://futures-brokiepedia-api.kentaursoft-com.workers.dev/api/v1/prices?symbols=${encodeURIComponent(JSON.stringify(symbols))}`);
-      if (res.ok) {
-        const data = await res.json();
-        data.forEach((ticker: any) => {
-          tickerPrices[ticker.symbol] = {
-            price: parseFloat(ticker.lastPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            change: parseFloat(ticker.priceChangePercent)
-          };
-        });
-        tickerPrices = tickerPrices;
-      }
-    } catch (err) {
-      console.error('Ticker fetch error:', err);
-    }
-  }
   
   onMount(() => {
     stopPolling = startPolling(5000);
-    fetchTickerPrices();
-    tickerInterval = setInterval(fetchTickerPrices, 5000);
     return () => {
       if (stopPolling) stopPolling();
-      clearInterval(tickerInterval);
     };
   });
   
@@ -66,11 +34,6 @@
   
   function navigateTo(path: string) {
     goto(path);
-  }
-  
-  function hideImg(e: Event) {
-    const el = e.target as HTMLElement;
-    if (el) el.style.display = 'none';
   }
   
   function logout() {
@@ -156,19 +119,21 @@
         </div>
       </div>
       
-      <!-- Live Crypto Ticker -->
-      <div class="flex-1 overflow-hidden flex items-center">
-        <div class="flex items-center gap-5 px-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
-          {#each tickerSymbols as { symbol, label, icon } (symbol)}
-            <div class="flex items-center gap-2 flex-shrink-0">
-              <img src={icon} alt={label} class="w-4 h-4 rounded-full opacity-80" on:error={hideImg} />
-              <span class="text-xs font-medium text-white/70 font-sans">{label}</span>
-              <span class="text-sm font-mono font-semibold text-white/90">${tickerPrices[symbol]?.price ?? '--'}</span>
-              <span class="text-xs font-mono {tickerPrices[symbol]?.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-                {tickerPrices[symbol]?.change >= 0 ? '+' : ''}{tickerPrices[symbol]?.change?.toFixed(2) ?? '--'}%
-              </span>
-            </div>
-          {/each}
+      <!-- Portfolio Mode Toggle -->
+      <div class="flex-1 flex items-center px-2">
+        <div class="flex p-0.5 bg-zinc-800/60 rounded-lg border border-zinc-700/30">
+          <button
+            class="px-3 py-1.5 rounded-md text-xs font-semibold font-mono tracking-wider transition-all {$tradingMode === 'paper' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-900/40' : 'text-zinc-500 hover:text-zinc-300'}"
+            on:click={() => tradingMode.set('paper')}
+          >
+            <span class="mr-1">📄</span> PAPER
+          </button>
+          <button
+            class="px-3 py-1.5 rounded-md text-xs font-semibold font-mono tracking-wider transition-all {$tradingMode === 'live' ? 'bg-rose-600 text-white shadow-sm shadow-rose-900/40' : 'text-zinc-500 hover:text-zinc-300'}"
+            on:click={() => tradingMode.set('live')}
+          >
+            <span class="mr-1">🔥</span> LIVE
+          </button>
         </div>
       </div>
       
@@ -227,11 +192,4 @@
 </div>
 
 <style>
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
 </style>

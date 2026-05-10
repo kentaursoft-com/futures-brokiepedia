@@ -22,12 +22,17 @@ class ApiClient {
       "Content-Type": "application/json",
     };
 
+    // Append trading mode to all API calls
+    const mode = typeof localStorage !== 'undefined' ? localStorage.getItem('futures_trading_mode') : null;
+    const separator = path.includes('?') ? '&' : '?';
+    const modePath = mode ? `${path}${separator}mode=${mode}` : path;
+
     const token = this.token;
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${API_BASE}${modePath}`, {
       ...options,
       headers: {
         ...headers,
