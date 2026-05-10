@@ -1,5 +1,5 @@
 <script lang="ts">
-  import '../../app.css';
+  import '../../../app.css';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { liveState, startPolling } from '$lib/api';
@@ -20,20 +20,30 @@
   $: daemonConnected = $liveState ? true : false;
   $: systemStatus = $liveState?.systemStatus || 'paper';
   
-  const navItems = [
-    { path: '/', label: 'Dash', icon: 'dashboard' },
-    { path: '/exchanges', label: 'Exchanges', icon: 'exchange' },
-    { path: '/trade', label: 'Trade', icon: 'chart' },
-    { path: '/positions', label: 'Risk', icon: 'risk' },
+  $: mode = $page.params.mode || 'paper';
+  
+  $: navItems = [
+    { path: `/${mode}`, label: 'Dash', icon: 'dashboard' },
+    { path: `/${mode}/exchanges`, label: 'Exchanges', icon: 'exchange' },
+    { path: `/${mode}/trade`, label: 'Trade', icon: 'chart' },
+    { path: `/${mode}/positions`, label: 'Risk', icon: 'risk' },
     { path: '/signals', label: 'Signals', icon: 'signal' },
-    { path: '/journal', label: 'Journal', icon: 'journal' },
+    { path: `/${mode}/journal`, label: 'Journal', icon: 'journal' },
     { path: '/api-keys', label: 'API Keys', icon: 'key' },
-    { path: '/analytics', label: 'Logs', icon: 'analytics' },
+    { path: `/${mode}/analytics`, label: 'Logs', icon: 'analytics' },
     { path: '/settings', label: 'System', icon: 'settings' },
   ];
   
   function navigateTo(path: string) {
     goto(path);
+  }
+  
+  function switchMode(targetMode: string) {
+    // Replace current mode in URL path with target mode
+    const current = $page.url.pathname;
+    const newPath = current.replace(/^\/(paper|live)\//, `/${targetMode}/`).replace(/^\/(paper|live)$/, `/${targetMode}`);
+    goto(newPath);
+    tradingMode.set(targetMode as TradingMode);
   }
   
   function logout() {
@@ -124,13 +134,13 @@
         <div class="flex p-0.5 bg-zinc-800/60 rounded-lg border border-zinc-700/30">
           <button
             class="px-3 py-1.5 rounded-md text-xs font-semibold font-mono tracking-wider transition-all {$tradingMode === 'paper' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-900/40' : 'text-zinc-500 hover:text-zinc-300'}"
-            on:click={() => tradingMode.set('paper')}
+            on:click={() => switchMode('paper')}
           >
             <span class="mr-1">📄</span> PAPER
           </button>
           <button
             class="px-3 py-1.5 rounded-md text-xs font-semibold font-mono tracking-wider transition-all {$tradingMode === 'live' ? 'bg-rose-600 text-white shadow-sm shadow-rose-900/40' : 'text-zinc-500 hover:text-zinc-300'}"
-            on:click={() => tradingMode.set('live')}
+            on:click={() => switchMode('live')}
           >
             <span class="mr-1">🔥</span> LIVE
           </button>

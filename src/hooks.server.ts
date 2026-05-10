@@ -1,6 +1,6 @@
 import { redirect, type Handle } from '@sveltejs/kit';
 
-const PUBLIC_ROUTES = ['/auth', '/health', '/api/v1/health', '/eval'];
+const PUBLIC_ROUTES = ['/', '/auth', '/health', '/api/v1/health', '/eval'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const { url, cookies } = event;
@@ -36,8 +36,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 		throw redirect(302, '/auth');
 	}
 	
-	if (isAuthenticated && path === '/auth') {
-		throw redirect(302, '/');
+	if (isAuthenticated && (path === '/auth')) {
+		throw redirect(302, '/paper');
+	}
+	
+	if (isAuthenticated && path === '/') {
+		throw redirect(302, '/paper');
 	}
 	
 	const response = await resolve(event);
