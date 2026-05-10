@@ -153,6 +153,17 @@ class ApiClient {
     return this.fetch("/api/v1/activity") as Promise<any>;
   }
 
+  async getSettings(): Promise<any> {
+    return this.fetch("/api/v1/settings") as Promise<any>;
+  }
+
+  async saveSettings(settings: any): Promise<{ success: boolean }> {
+    return this.fetch("/api/v1/settings", {
+      method: "POST",
+      body: JSON.stringify(settings),
+    }) as Promise<{ success: boolean }>;
+  }
+
   isAuthenticated(): boolean {
     return !!this.token;
   }
